@@ -6,89 +6,88 @@ os.environ["QT_QUICK_CONTROLS_STYLE"] = "Fusion"
 
 from PySide6.QtWidgets import QApplication
 from PySide6.QtQml import QQmlApplicationEngine
-from PySide6.QtCore import QUrl, QObject, Slot
+from PySide6.QtCore import QUrl, QObject, Slot, Signal
 
-class AppBackend(QObject):
-    """Simple backend to switch between automations"""
+class App(QObject):
+    pageChanged = Signal(str)
     
-    def __init__(self, engine, app_path):
+    def __init__(self, engine):
         super().__init__()
         self.engine = engine
-        self.app_path = app_path
+        self.backends = {}  # Store all backends here
     
     @Slot(str)
-    def loadAutomation(self, automation_type):
-        """Load the selected automation"""
-        print(f"Loading {automation_type}...")
+    def load(self, automation):
+        print(f"Loading {automation}...")
         
-        # Clear old QML
-        self.engine.clearComponentCache()
-        
-        # Import and create cores based on automation type
-        if automation_type == "extinction":
+        if automation == "extinction":
             from cores import XWing, Cornerstone, PMTShield
             from automation_clusters import HyperSpectralExtinction
             
-            xwing = XWing()
-            cornerstone = Cornerstone()
-            pmt = PMTShield()
-            automation = HyperSpectralExtinction(xwing, cornerstone, pmt)
+            self.backends = {
+                'xwing': XWing(),
+                'cornerstone': Cornerstone(),
+                'pmt': PMTShield()
+            }
+            self.backends['automation'] = HyperSpectralExtinction(
+                self.backends['xwing'], 
+                self.backends['cornerstone'], 
+                self.backends['pmt']
+            )
             
-            self.engine.rootContext().setContextProperty("XWingBackend", xwing)
-            self.engine.rootContext().setContextProperty("CornerstoneBackend", cornerstone)
-            self.engine.rootContext().setContextProperty("ExtinctionBackend", automation)
-            self.engine.rootContext().setContextProperty("PMTGainShieldBackend", pmt)
+            self.engine.rootContext().setContextProperty("XWingBackend", self.backends['xwing'])
+            self.engine.rootContext().setContextProperty("CornerstoneBackend", self.backends['cornerstone'])
+            self.engine.rootContext().setContextProperty("PMTGainShieldBackend", self.backends['pmt'])
+            self.engine.rootContext().setContextProperty("ExtinctionBackend", self.backends['automation'])
             
-            # Load extinction GUI
-            qml_file = self.app_path / "components/extinction_main.qml"
+            self.pageChanged.emit("extinction_main.qml")
             
-        elif automation_type == "singlefluor":
-            from cores import XWing, Cornerstone
+        elif automation == "singlefluor":
+            from cores import XWing, Cornerstone, PMTShield
             from automation_clusters import HyperSpectralSingleFluor
             
-            xwing = XWing()
-            cornerstone = Cornerstone()
-            automation = HyperSpectralSingleFluor(xwing, cornerstone)
+            self.backends = {
+                'xwing': XWing(),
+                'cornerstone': Cornerstone(),
+                'pmt': PMTShield()
+            }
+            self.backends['automation'] = HyperSpectralSingleFluor(
+                self.backends['xwing'], 
+                self.backends['cornerstone'], 
+                self.backends['pmt']
+            )
             
-            self.engine.rootContext().setContextProperty("XWingBackend", xwing)
-            self.engine.rootContext().setContextProperty("CornerstoneBackend", cornerstone)
-            self.engine.rootContext().setContextProperty("SingleFluorBackend", automation)
+            self.engine.rootContext().setContextProperty("XWingBackend", self.backends['xwing'])
+            self.engine.rootContext().setContextProperty("CornerstoneBackend", self.backends['cornerstone'])
+            self.engine.rootContext().setContextProperty("PMTGainShieldBackend", self.backends['pmt'])
+            self.engine.rootContext().setContextProperty("SingleFluorBackend", self.backends['automation'])
             
-            # Load single fluor GUI
-            qml_file = self.app_path / "components/singlefluor_main.qml"
+            self.pageChanged.emit("singlefluor_main.qml")
             
-        elif automation_type == "slim":
-            # TODO: Add your SLIM cores here when ready
+        elif automation == "slim":
             from cores import DeathStar
             from automation_clusters import SLIM
             
-            deathstar1 = DeathStar()
-            automation = SLIM(deathstar1)
+            self.backends = {
+                'deathstar1': DeathStar()
+            }
+            self.backends['automation'] = SLIM(self.backends['deathstar1'])
             
-            self.engine.rootContext().setContextProperty("DeathStar1Backend", deathstar1)
-            self.engine.rootContext().setContextProperty("DeathStar2Backend", deathstar1)
-            self.engine.rootContext().setContextProperty("SLIMBackend", automation)
+            self.engine.rootContext().setContextProperty("DeathStar1Backend", self.backends['deathstar1'])
+            self.engine.rootContext().setContextProperty("DeathStar2Backend", self.backends['deathstar1'])
+            self.engine.rootContext().setContextProperty("SLIMBackend", self.backends['automation'])
             
-            # Load SLIM GUI
-            qml_file = self.app_path / "components/slim_main.qml"
-        
-        # Load the new page
-        self.engine.load(QUrl.fromLocalFile(str(qml_file)))
+            self.pageChanged.emit("slim_main.qml")
+    
+    @Slot()
+    def home(self):
+        self.pageChanged.emit("HomePage.qml")
 
-def main():
-    app = QApplication(sys.argv)
-    engine = QQmlApplicationEngine()
-    app_path = Path(__file__).resolve().parent
-    
-    # Create simple backend
-    app_backend = AppBackend(engine, app_path)
-    engine.rootContext().setContextProperty("AppBackend", app_backend)
-    
-    # Load home page
-    qml_file = app_path / "components/home.qml"
-    engine.load(QUrl.fromLocalFile(str(qml_file)))
-    
-    sys.exit(app.exec())
+app = QApplication(sys.argv)
+engine = QQmlApplicationEngine()
+app_backend = App(engine)
 
-if __name__ == "__main__":
-    main()
+engine.rootContext().setContextProperty("App", app_backend)
+engine.load(Path(__file__).parent / "components/MainWindow.qml")
+
+sys.exit(app.exec())

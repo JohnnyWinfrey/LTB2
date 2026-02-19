@@ -269,12 +269,12 @@ class HyperSpectralExtinction(QObject):
 
 class HyperSpectralSingleFluor(QObject):
      """Extinction automation using hyperspectral setup"""
-     def __init__(self, xwing, cornerstone):
+     def __init__(self, xwing, cornerstone, pmt):
         super().__init__()
         self.digi = NIScopeClient()
         self.plotter = None
         self.worker = None
-        self.pmt = ArduinoClient("COM8", 115200)
+        self.pmt = pmt
         self.gain = 0
         self.pmt.changeGain(self.gain)
         self.xwing = xwing
