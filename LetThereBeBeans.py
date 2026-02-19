@@ -26,16 +26,18 @@ class AppBackend(QObject):
         
         # Import and create cores based on automation type
         if automation_type == "extinction":
-            from cores import XWing, Cornerstone
+            from cores import XWing, Cornerstone, PMTShield
             from automation_clusters import HyperSpectralExtinction
             
             xwing = XWing()
             cornerstone = Cornerstone()
-            automation = HyperSpectralExtinction(xwing, cornerstone)
+            pmt = PMTShield()
+            automation = HyperSpectralExtinction(xwing, cornerstone, pmt)
             
             self.engine.rootContext().setContextProperty("XWingBackend", xwing)
             self.engine.rootContext().setContextProperty("CornerstoneBackend", cornerstone)
             self.engine.rootContext().setContextProperty("ExtinctionBackend", automation)
+            self.engine.rootContext().setContextProperty("PMTGainShieldBackend", pmt)
             
             # Load extinction GUI
             qml_file = self.app_path / "components/extinction_main.qml"

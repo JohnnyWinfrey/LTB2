@@ -227,10 +227,8 @@ class XWing(QObject):
         """Expose reference as QVariant for QML"""
         return self.reference if self.reference else {}
 
-# Important: What counts as Clockwise and Counterclockwise will be assuming you're looking 'towards' the incoming light
-
 class DeathStar(QObject):
-    
+    # Important: What counts as Clockwise and Counterclockwise will be assuming you're looking 'towards' the incoming light
     wavePlateRotated = Signal()
     polarRotated = Signal()
     orientationChanged = Signal()
@@ -330,7 +328,6 @@ class DeathStar(QObject):
         self.polarRotated.emit()
         self.wavePlateRotated.emit()
 
-
 class Cornerstone(QObject):
     waveChanged = Signal()
     shutterChanged = Signal()
@@ -412,6 +409,7 @@ class Cornerstone(QObject):
         self.shutterChanged.emit()
 
 class LivePlot(QObject):
+
     """ Creates a window with live plot """
     
     def __init__(self):
@@ -670,3 +668,27 @@ class LivePlot(QObject):
         """Receive the selected path from QML"""
         self.save_directory = path
         print(f"Save location set to: {path}")
+
+class PMTShield(QObject):
+    
+    gainChanged = Signal()
+
+    def __init__(self):
+        super().__init__()
+        self._gain = 0
+        self.pmt = ArduinoClient("COM8", 115200)
+        print("PMT Gain Shield Online")
+        
+
+    # --- Current gain value ---
+    @Property(float, notify=gainChanged)
+    def gain(self):
+        return self._gain
+
+    # --- Changing gain value (called from QML) ---
+    @Slot(str)
+    def changeGain(self, desiredGain):
+        self._gain = desiredGain
+        self.pmt.commandSend(f"{self._gain}")
+        print(f"Gain set to: {self._gain}")
+        self.gainChanged.emit()

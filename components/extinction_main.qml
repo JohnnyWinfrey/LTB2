@@ -11,11 +11,18 @@ ApplicationWindow {
     Row {
         anchors.fill: parent
         spacing: 0
-        
-        Loader {
-            width: 200
-            height: 900
-            source: "XWingController.qml"
+        Column{
+            Loader {
+                width: 200
+                height: 351
+                source: "XWingController.qml"
+            }
+
+            Loader {
+                width: 200
+                height: 60
+                source: "PMTGainShieldController.qml"
+            }
         }
         
         Column {

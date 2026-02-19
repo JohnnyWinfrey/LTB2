@@ -62,19 +62,17 @@ class Worker(QObject):
 class HyperSpectralExtinction(QObject):
     """Extinction automation using hyperspectral setup"""
 
-    def __init__(self, xwing, cornerstone):
+    def __init__(self, xwing, cornerstone, pmt):
         super().__init__()
         self.digi = NIScopeClient()
         self.plotter = None
         self.worker = None
-        self.pmt = ArduinoClient("COM8", 115200)
-        self.gain = 0
-        self.pmt.commandSend(f"{self.gain:.3f}")
+        self.pmt = pmt
         self.xwing = xwing
         self.cornerstone = cornerstone
         self.gain_map = {}
 
-        print("Extinction Automation Ready")
+        print("Extinction Automation Online")
     
     @Slot()
     def threading(self):
@@ -167,7 +165,7 @@ class HyperSpectralExtinction(QObject):
                                 print("too much sauce")
                                 break
                         
-                        self.pmt.commandSend(f"{self.gain:.3f}")
+                        self.pmt.changeGain(self.gain)
                         time.sleep(1.5)
                         dataPoint = self.digi.record()
                         adjustment_count += 1
@@ -181,7 +179,7 @@ class HyperSpectralExtinction(QObject):
                 key = round(wavelength, 2)
                 if key in self.gain_map:
                     self.gain = self.gain_map[key]
-                    self.pmt.commandSend(f"{self.gain:.3f}")
+                    self.pmt.changeGain(self.gain)
                     time.sleep(1.5)
                 else:
                     print(f"No reference gain found for Region {region}, λ={wavelength:.2f} nm")
@@ -278,7 +276,7 @@ class HyperSpectralSingleFluor(QObject):
         self.worker = None
         self.pmt = ArduinoClient("COM8", 115200)
         self.gain = 0
-        self.pmt.commandSend(f"{self.gain:.3f}")
+        self.pmt.changeGain(self.gain)
         self.xwing = xwing
         self.cornerstone = cornerstone
         self.gain_map = {}
