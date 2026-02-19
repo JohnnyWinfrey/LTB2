@@ -18,7 +18,7 @@ class App(QObject):
     
     @Slot(str)
     def load(self, automation):
-        print(f"Loading {automation}...")
+        print(f"Loading {automation}....")
         
         if automation == "extinction":
             from cores import XWing, Cornerstone, PMTShield
