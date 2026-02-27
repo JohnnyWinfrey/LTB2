@@ -9,6 +9,7 @@ import pyqtgraph as pg
 import time
 from datetime import datetime
 
+
 class Worker(QObject):
     """ Object that creates a thread for automation logic then moves logic
     to that thread. All you have to do is create the object with the function 

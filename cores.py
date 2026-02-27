@@ -2,6 +2,7 @@ from PySide6.QtCore import QObject, Signal, Property, Slot, QThread
 from PySide6.QtWidgets import QFileDialog
 from hardware_controllers import *
 import pyqtgraph as pg
+from seabreeze.spectrometers import Spectrometer
 
 
 """ Create QObject classes for each hardware controller. """
