@@ -430,11 +430,13 @@ class HyperSpectralSingleFluor(QObject):
         self.cornerstone.mono.close_shutter()
         print(f"Scan complete! Data saved to: {csv_filename}")
 
-
 class SLIM(QObject):
-    def __init__(self, DeathStar):
+    def __init__(self, DeathStar,spectrometerCore = None):
         super().__init__()
         self.deathstar1 = DeathStar
+        # self.deathstar2 = DeathStar2
+        # self.xwing = xwing 
+        self.spectro = spectrometerCore
         self.worker = None
 
         print("SLIM AUTOMATION READY")
@@ -450,11 +452,76 @@ class SLIM(QObject):
         self.worker.start()
         print("Scan started")
 
-    def _mueller(self):
-        rangeP = [90, 180, 270, 360]
-        rangeW = [90, 180, 270, 360]
+    # Later on, probably change to an 18 sequence but for now we can do the min 
+    def _mueller(self, theta = 20, N = 16):
 
-        for p in range(4):
-            for w in range (4):
-                time.sleep(0.5)
-                self.deathstar1. setPosition(str(rangeP[p]), str(rangeW[w]))
+        """
+        timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+        output_dir = os.path.join("data", timestamp)
+        os.makedirs(output_dir, exist_ok=True)
+        csv_filename = os.path.join(output_dir, 'slim_scan.csv')
+        
+        print(f"Saving data to: {output_dir}")
+        """
+
+        for value in range(theta, (theta*N)+1, theta):
+            self.deathstar1.setPosition(str(value), str(value*5))
+            time.sleep(0.4)
+            #self.slimScan(0,value,value*5,0)
+            print("Collection at R1: ",value, " R2: ", value*5)
+
+        
+
+        """
+        with open(csv_filename, 'w', newline='') as f:
+            writer = csv.DictWriter(f, fieldnames=[
+                'region', 'scan_type', 'x', 'y', 'wavelength', 'voltage', 'gain'
+            ])
+            writer.writeheader()
+            writer.writerows(all_data)
+        
+        print(f"\nSaved mueller data - {len(all_data)} measurements")
+        """
+
+    def slimScan(self, P1, R1, R2, P2):
+        self.deathstar1.setPosition(str(R1), str(R2))
+        time.sleep(0.5) # Rotation of the Retarders 
+
+        measurements = []
+        x = 0 
+        y = 0 #Change this later on 
+        region = 1 
+        side = 'x' 
+        wavelength, intensities = self.spectro.takeSpectrum() 
+
+        for i in range(len(wavelength)):
+            measurements.append({
+                'region': region,
+                'x': x,
+                'y': y,
+                'side': side,
+                'IW_Theta': R1,
+                'IP_Theta': P1,
+                'CW_Theta': R2,
+                'CP_Theta': P2,
+                'wavelength': wavelength[i],
+                'intensity': intensities[i],
+                'integration_time': self.spectro.integration(),
+            })
+
+        return measurements
+        
+
+    def lateralCalibration(self):
+        print ("Hello World")
+        # This is for maximimizing intensity with translational movement
+        # Do later 
+            
+#Assuming that you have the waveplates on the exictation arm 
+    def scanIntensity(self, E_wp, E_pol):
+        self.deathstar1.setPosition(str(E_pol), str(E_wp))
+        #self.deathstar2.setPosition(str(0), str(0))
+        time.sleep(0.5)
+
+        #self.deathstar2.setPosition(str(90), str(90))
+        time.sleep(0.5)  

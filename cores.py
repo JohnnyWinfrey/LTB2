@@ -328,6 +328,34 @@ class DeathStar(QObject):
         self.polarRotated.emit()
         self.wavePlateRotated.emit()
 
+class SpectreCore(QObject):
+
+    int_Time_Changed = Signal()
+    spec_Taken = Signal()
+
+    def __init__(self):
+        super().__init__()
+        self.intTime = 500
+        self.spec = Spectrometer.from_first_available()
+        self.spec.integration_time_micros(self.intTime)
+
+    # --- Integration Time  ---
+    @Property(int, notify=int_Time_Changed)
+    def integration(self):
+        return self.intTime
+    
+    @Slot(str)
+    def setIntegration(self, value):
+        print("Set Integration Time ->", value)
+        self.intTime = int(value)
+        self.spec.integration_time_micros(self.intTime)
+        self.int_Time_Changed.emit()
+
+    def takeSpectrum(self):
+        wavelengths = self.spec.wavelengths()
+        intensities = self.spec.intensities()
+        return wavelengths, intensities
+
 class Cornerstone(QObject):
     waveChanged = Signal()
     shutterChanged = Signal()
