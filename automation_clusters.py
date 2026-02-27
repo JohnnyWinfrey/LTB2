@@ -430,7 +430,7 @@ class HyperSpectralSingleFluor(QObject):
         self.cornerstone.mono.close_shutter()
         print(f"Scan complete! Data saved to: {csv_filename}")
 
-class SLIM(QObject):
+class SLIM(QObject): # Still WIP
     def __init__(self, DeathStar,spectrometerCore = None):
         super().__init__()
         self.deathstar1 = DeathStar
