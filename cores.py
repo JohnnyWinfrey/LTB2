@@ -242,7 +242,7 @@ class DeathStar(QObject):
         self._home_thetaP = 0
         self._step = 120
         self.rate = 21000 
-        self.ac = ArduinoClient("COM9", 115200)
+        self.ac = ArduinoClient("COM7", 115200)
         self.reference = None
         self.samples = []
         print("DeathStar online")
@@ -262,11 +262,11 @@ class DeathStar(QObject):
     # --- String versions for your labels ---
     @Property(str, notify=wavePlateRotated)
     def wPosString(self):
-        return f"{self._thetaW:.3d}"
+        return f"{self._thetaW:.3f}"
 
     @Property(str, notify=polarRotated)
     def pPosString(self):
-        return f"{self._thetaP:.3d}"
+        return f"{self._thetaP:.3f}"
 
     # --- Movement slots (called from QML. Test with cmd first) ---
     @Slot()
@@ -336,7 +336,7 @@ class SpectreCore(QObject):
 
     def __init__(self):
         super().__init__()
-        self.intTime = 500
+        self.intTime = 500000
         self.spec = Spectrometer.from_first_available()
         self.spec.integration_time_micros(self.intTime)
 

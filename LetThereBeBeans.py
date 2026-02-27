@@ -65,13 +65,14 @@ class App(QObject):
             self.pageChanged.emit("singlefluor_main.qml")
             
         elif automation == "slim":
-            from cores import DeathStar
+            from cores import DeathStar, SpectreCore
             from automation_clusters import SLIM
             
             self.backends = {
-                'deathstar1': DeathStar()
+                'deathstar1': DeathStar(),
+                'spectro' : SpectreCore()
             }
-            self.backends['automation'] = SLIM(self.backends['deathstar1'])
+            self.backends['automation'] = SLIM(self.backends['deathstar1'], self.backends['spectro'])
             
             self.engine.rootContext().setContextProperty("DeathStar1Backend", self.backends['deathstar1'])
             self.engine.rootContext().setContextProperty("DeathStar2Backend", self.backends['deathstar1'])

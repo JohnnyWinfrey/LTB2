@@ -432,7 +432,7 @@ class HyperSpectralSingleFluor(QObject):
         print(f"Scan complete! Data saved to: {csv_filename}")
 
 class SLIM(QObject): # Still WIP
-    def __init__(self, DeathStar,spectrometerCore = None):
+    def __init__(self, DeathStar,spectrometerCore):
         super().__init__()
         self.deathstar1 = DeathStar
         # self.deathstar2 = DeathStar2
@@ -456,33 +456,31 @@ class SLIM(QObject): # Still WIP
     # Later on, probably change to an 18 sequence but for now we can do the min 
     def _mueller(self, theta = 20, N = 16):
 
-        """
+
         timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
         output_dir = os.path.join("data", timestamp)
         os.makedirs(output_dir, exist_ok=True)
         csv_filename = os.path.join(output_dir, 'slim_scan.csv')
         
         print(f"Saving data to: {output_dir}")
-        """
+        all_data = []
 
         for value in range(theta, (theta*N)+1, theta):
-            self.deathstar1.setPosition(str(value), str(value*5))
+            data = self.slimScan(0, value, value*5, 0)
+            all_data.extend(data)
             time.sleep(0.4)
             #self.slimScan(0,value,value*5,0)
             print("Collection at R1: ",value, " R2: ", value*5)
 
-        
-
-        """
         with open(csv_filename, 'w', newline='') as f:
             writer = csv.DictWriter(f, fieldnames=[
-                'region', 'scan_type', 'x', 'y', 'wavelength', 'voltage', 'gain'
+                'region', 'x', 'y', 'side', 'IW_Theta', 'IP_Theta', 'CW_Theta', 'CP_Theta', 'wavelength', 'intensity', 'integration_time'
             ])
             writer.writeheader()
             writer.writerows(all_data)
         
         print(f"\nSaved mueller data - {len(all_data)} measurements")
-        """
+
 
     def slimScan(self, P1, R1, R2, P2):
         self.deathstar1.setPosition(str(R1), str(R2))
@@ -507,7 +505,7 @@ class SLIM(QObject): # Still WIP
                 'CP_Theta': P2,
                 'wavelength': wavelength[i],
                 'intensity': intensities[i],
-                'integration_time': self.spectro.integration(),
+                'integration_time': self.spectro.integration,
             })
 
         return measurements
