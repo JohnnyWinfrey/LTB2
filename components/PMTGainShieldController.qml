@@ -3,16 +3,26 @@ import QtQuick.Controls
 
 Rectangle {
     id: pmtgainshieldController
-    width: 150
-    height: 100
+    width: 200
+    height: 60
     color: "#6f6f6f"
     radius: 5
     border.width: 2
-
+    
+    Rectangle {
+        id: rectangle
+        x: 15
+        y: 5
+        width: 65
+        height: 50
+        color: "#000000"
+        border.width: 2
+    }
+    
     TextInput {
         id: desiredGain
         x: 20
-        y: 20
+        y: 10
         width: 55
         height: 40
         color: "#ff6d00"
@@ -22,11 +32,11 @@ Rectangle {
         verticalAlignment: Text.AlignVCenter
         font.family: "Cascadia Mono"
     }
-
+    
     Button {
         id: updateGain
-        x: 75
-        y: 86
+        x: 95
+        y: 10
         width: 55
         height: 40
         text: qsTr("Update")
@@ -43,6 +53,8 @@ Rectangle {
             border.width: 2
             topRightRadius: 10
             topLeftRadius: 10
+            bottomRightRadius: 10
+            bottomLeftRadius: 10
         }
     }
 
