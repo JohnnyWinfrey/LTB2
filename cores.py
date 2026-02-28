@@ -238,16 +238,15 @@ class DeathStar(QObject):
         super().__init__()
         self._thetaW = 0
         self._thetaP = 0
-        self._home_thetaW = 0
-        self._home_thetaP = 0
         self._step = 120
         self.rate = 21000 
         self.ac = ArduinoClient("COM7", 115200)
         self.reference = None
         self.samples = []
+        self.ac.commandSend(f"G10 L20 P1 X{0} Y{0}")
+        self.ac.commandSend(f"G1 X{15} Y{15} F{10000}")
+        self.ac.commandSend(f"G1 X{0} Y{0} F{10000}")
         print("DeathStar online")
-
-
 
     # --- Wave Plate Anglular ---
     @Property(int, notify=wavePlateRotated)
@@ -267,6 +266,10 @@ class DeathStar(QObject):
     @Property(str, notify=polarRotated)
     def pPosString(self):
         return f"{self._thetaP:.3f}"
+    
+    @Slot()
+    def set_Rate(self, newRate):
+        self.rate = newRate
 
     # --- Movement slots (called from QML. Test with cmd first) ---
     @Slot()
@@ -302,21 +305,26 @@ class DeathStar(QObject):
         print("Rotate Left ->", self._thetaP)
         self.polarRotated.emit()
 
-    # It might be unnecessary to have be able to set 'home' for the rotating componets but I'll keep it in for testing
+    # Returns to your 'home', ususally the nearest 0th degree 
     @Slot()
     def home(self):
         self.ac.commandSend(f"G1 X{0} Y{0} F{self.rate}")
-        self._thetaP = self._home_thetaP
-        self._thetaW = self._home_thetaW
+        self._thetaP = 0
+        self._thetaW = 0
         print("Go Home ->", self._thetaP, self._thetaW)
         self.polarRotated.emit()
         self.wavePlateRotated.emit()
 
+    # Returns to the 0th degree and sets it to home 
     @Slot()
-    def setHome(self):
-        self._home_thetaP = self._thetaP
-        self._home_thetaW = self._thetaW
+    def resetHome(self):
+        returnP = self._thetaP%360
+        returnW = self._thetaW%360
+        self.ac.commandSend(f"G1 X{self._thetaP-returnP} Y{self._thetaW-returnW} F{self.rate}")
+        self.ac.commandSend(f"G10 L20 P1 X{0} Y{0}")
         print("Set Home ->", self._thetaP, self._thetaW)
+        self._thetaP = 0
+        self._thetaW = 0 
 
     @Slot(str, str)
     def setPosition(self, p_str, w_str):
@@ -339,6 +347,7 @@ class SpectreCore(QObject):
         self.intTime = 500000
         self.spec = Spectrometer.from_first_available()
         self.spec.integration_time_micros(self.intTime)
+        print("Spectrometer Found:", self.spec)
 
     # --- Integration Time  ---
     @Property(int, notify=int_Time_Changed)

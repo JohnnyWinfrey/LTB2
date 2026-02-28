@@ -449,28 +449,16 @@ class SLIM(QObject): # Still WIP
             print("Hold ur horses...")
             return
         
-        self.worker = Worker(self._mueller)
+        self.worker = Worker(self._cali)
         self.worker.start()
         print("Scan started")
 
-    # Later on, probably change to an 18 sequence but for now we can do the min 
-    def _mueller(self, theta = 20, N = 16):
-
-
+    def saveFiles(self, all_data, filename):
         timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
         output_dir = os.path.join("data", timestamp)
         os.makedirs(output_dir, exist_ok=True)
-        csv_filename = os.path.join(output_dir, 'slim_scan.csv')
-        
+        csv_filename = os.path.join(output_dir, f"{filename}.csv")
         print(f"Saving data to: {output_dir}")
-        all_data = []
-
-        for value in range(theta, (theta*N)+1, theta):
-            data = self.slimScan(0, value, value*5, 0)
-            all_data.extend(data)
-            time.sleep(0.4)
-            #self.slimScan(0,value,value*5,0)
-            print("Collection at R1: ",value, " R2: ", value*5)
 
         with open(csv_filename, 'w', newline='') as f:
             writer = csv.DictWriter(f, fieldnames=[
@@ -481,14 +469,38 @@ class SLIM(QObject): # Still WIP
         
         print(f"\nSaved mueller data - {len(all_data)} measurements")
 
+    # Later on, probably change to an 18 sequence but for now we can do the min 
+    def _mueller(self, theta = 20, N = 16):
+        all_data = []
+
+        for value in range(theta, (theta*N)+1, theta):
+            data = self.slimScan(0, value, value*5, 0)
+            all_data.extend(data)
+            print("Collection at R1: ",value, " R2: ", value*5)
+
+        self.saveFiles(all_data, "slim_scan")
+        self.deathstar1.resetHome()
+
+    def _cali(self):
+        self.spectro.setIntegration(20000)
+        self.deathstar1.set_Rate(10000)
+        cal_data = [] 
+        for i in range(11,3961,11):
+            data = self.slimScan(0, i, i*5, 0)
+            cal_data.extend(data)
+            if (i == 1980):
+                user_input = input("Enter to Continue: ")
+            print("Collection at R1: ",i, " R2: ", i*5)
+        self.saveFiles(cal_data, "PSG_Calibration")
+        self.deathstar1.resetHome()
 
     def slimScan(self, P1, R1, R2, P2):
         self.deathstar1.setPosition(str(R1), str(R2))
-        time.sleep(0.5) # Rotation of the Retarders 
+        time.sleep(0.7) # Time for the rotation of the retarders 
 
         measurements = []
         x = 0 
-        y = 0 #Change this later on 
+        y = 0 #Change this later on, but for now they're just hard set 
         region = 1 
         side = 'x' 
         wavelength, intensities = self.spectro.takeSpectrum() 
@@ -509,7 +521,6 @@ class SLIM(QObject): # Still WIP
             })
 
         return measurements
-        
 
     def lateralCalibration(self):
         print ("Hello World")
