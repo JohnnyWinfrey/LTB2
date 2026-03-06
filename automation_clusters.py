@@ -432,10 +432,10 @@ class HyperSpectralSingleFluor(QObject):
         print(f"Scan complete! Data saved to: {csv_filename}")
 
 class SLIM(QObject): # Still WIP
-    def __init__(self,  spectrometerCore, DeathStar1, DeathStar2):
+    def __init__(self,  spectrometerCore, PSG, PSA):
         super().__init__()
-        self.WP_DeathStar = DeathStar1
-        self.LP_DeathStar = DeathStar2
+        self.PSG_DeathStar = PSG
+        self.PSA_DeathStar = PSA
         self.spectro = spectrometerCore
         self.worker = None
 
@@ -475,9 +475,9 @@ class SLIM(QObject): # Still WIP
             print("Nothing running")
 
     def homeAll(self):
-        self.WP_DeathStar.resetHome()
-        self.WP_DeathStar.zHome()
-        self.LP_DeathStar.resetHome()
+        self.PSA_DeathStar.resetHome()
+        self.PSA_DeathStar.zHome()
+        self.PSG_DeathStar.resetHome()
 
     def saveFiles(self, all_data, scanType):
         timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
@@ -566,7 +566,7 @@ class SLIM(QObject): # Still WIP
 
 
     def _cali(self):
-        self.WP_DeathStar.set_Rate(10000)
+        self.PSA_DeathStar.set_Rate(10000)
         cal_data = [] 
         
         for i in range(11,3961,11):
@@ -582,8 +582,8 @@ class SLIM(QObject): # Still WIP
         self.homeAll()
 
     def slimScan(self, P1, R1, R2, P2, T1 = '', T2 = '', moveTime = 0.5):
-        self.WP_DeathStar.setPosition(str(R1), str(R2), str(T1))
-        self.LP_DeathStar.setPosition(str(P1), str(P2), str(T2))
+        self.PSG_DeathStar.setPosition(str(P1), str(R1), str(T2))
+        self.PSA_DeathStar.setPosition(str(P2), str(R2), str(T1))
         time.sleep(moveTime) # Time for the rotation of the retarders 
 
         measurements = []
@@ -617,7 +617,7 @@ class SLIM(QObject): # Still WIP
             
 #Assuming that you have the waveplates on the exictation arm 
     def scanIntensity(self, E_wp, E_pol):
-        self.WP_DeathStar.setPosition(str(E_pol), str(E_wp))
+        self.PSA_DeathStar.setPosition(str(E_pol), str(E_wp))
         #self.deathstar2.setPosition(str(0), str(0))
         time.sleep(0.5)
 

@@ -15,10 +15,10 @@ Rectangle {
     
     // Helper function to get the backend object
     function getBackend() {
-        if (deathStarBackend === "DeathStar1Backend") {
-            return DeathStar1Backend
-        } else if (deathStarBackend === "DeathStar2Backend") {
-            return DeathStar2Backend
+        if (deathStarBackend === "PSG_Backend") {
+            return PSG_Backend
+        } else if (deathStarBackend === "PSA_Backend") {
+            return PSA_Backend
         } else {
             return DeathStarBackend
         }

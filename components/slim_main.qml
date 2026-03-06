@@ -55,7 +55,7 @@ ApplicationWindow {
             height: 800
             spacing: 0
             
-            // Left DeathStar - Illumination
+            // Left DeathStar - PSG
             Column {
                 width: 200
                 height: 800
@@ -64,7 +64,7 @@ ApplicationWindow {
                 Text {
                     width: 200
                     height: 30
-                    text: "Illumination"
+                    text: "Polariazation Generator"
                     font.pixelSize: 16
                     font.family: "Courier"
                     color: "#ffffff"
@@ -84,8 +84,8 @@ ApplicationWindow {
                     source: "DeathStarController.qml"
                     
                     onLoaded: {
-                        // This loader uses DeathStar1Backend
-                        item.deathStarBackend = "DeathStar1Backend"
+                        // This loader uses PSG_Backend
+                        item.deathStarBackend = "PSG_Backend"
                     }
                 }
             }
@@ -299,7 +299,7 @@ ApplicationWindow {
                 }
             }
             
-            // Right DeathStar - Detection
+            // Right DeathStar - PSA
             Column {
                 width: 200
                 height: 800
@@ -308,7 +308,7 @@ ApplicationWindow {
                 Text {
                     width: 200
                     height: 30
-                    text: "Detection"
+                    text: "State Analyzer"
                     font.pixelSize: 16
                     font.family: "Courier"
                     color: "#ffffff"
@@ -328,8 +328,8 @@ ApplicationWindow {
                     source: "DeathStarController.qml"
                     
                     onLoaded: {
-                        // This loader uses DeathStar2Backend
-                        item.deathStarBackend = "DeathStar2Backend"
+                        // This loader uses PSA_Backend
+                        item.deathStarBackend = "PSA_Backend"
                     }
                 }
             }

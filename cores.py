@@ -233,7 +233,7 @@ class DeathStar(QObject):
     polarRotated = Signal()
     orientationChanged = Signal()
 
-    def __init__(self, comNum, ZAxis = False):
+    def __init__(self, comNum, ZAxis = False, id = "First"):
         super().__init__()
         self._thetaW = 0
         self._thetaP = 0
@@ -247,7 +247,8 @@ class DeathStar(QObject):
         self.ac.commandSend(f"G1 X{15} Y{15} F{10000}")
         self.ac.commandSend(f"G1 X{0} Y{0} F{10000}")
         self.ZAxis = ZAxis
-        print("DeathStar online")
+        self.name = id
+        print(self.name, " DeathStar online")
 
     # --- Wave Plate Anglular ---
     @Property(int, notify=wavePlateRotated)
@@ -346,7 +347,7 @@ class DeathStar(QObject):
             self._thetaP = float(p_str)
         if w_str.strip():
             self._thetaW = float(w_str)
-        print("Set Position ->", self._thetaP, self._thetaW, z)
+        print(self.name, " setting Position ->", self._thetaP, self._thetaW, z)
         self.polarRotated.emit()
         self.wavePlateRotated.emit()
 
@@ -368,7 +369,7 @@ class SpectreCore(QObject):
         self._scanX = 0.0
         self._scanY = 0.0
         self._side = "x"
-        self._region = 1
+        self._region = "A"
         self._sampleName = "sample"
 
         self.intMin, self.intMax = self.specInfo.features['spectrometer'][0].get_integration_time_micros_limits()
