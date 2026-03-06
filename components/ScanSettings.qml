@@ -93,7 +93,7 @@ Rectangle {
                     width: 40; height: 18; color: "#000000"; border.width: 1
                     TextInput {
                         id: regionInput
-                        anchors.fill: parent; text: "1"
+                        anchors.fill: parent; text: "A"
                         font.pixelSize: 11; color: "#ff6d00"
                         horizontalAlignment: Text.AlignHCenter; verticalAlignment: Text.AlignVCenter
                         onTextChanged: SpectroBackend.setRegion(text)

@@ -64,7 +64,7 @@ ApplicationWindow {
                 Text {
                     width: 200
                     height: 30
-                    text: "Polariazation Generator"
+                    text: "State Generator"
                     font.pixelSize: 16
                     font.family: "Courier"
                     color: "#ffffff"
