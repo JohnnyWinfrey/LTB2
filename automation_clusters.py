@@ -432,32 +432,61 @@ class HyperSpectralSingleFluor(QObject):
         print(f"Scan complete! Data saved to: {csv_filename}")
 
 class SLIM(QObject): # Still WIP
-    def __init__(self, DeathStar,spectrometerCore):
+    def __init__(self,  spectrometerCore, DeathStar1, DeathStar2):
         super().__init__()
-        self.deathstar1 = DeathStar
-        # self.deathstar2 = DeathStar2
-        # self.xwing = xwing 
+        self.WP_DeathStar = DeathStar1
+        self.LP_DeathStar = DeathStar2
         self.spectro = spectrometerCore
         self.worker = None
 
         print("SLIM AUTOMATION READY")
 
-    @Slot()
-    def threading(self):
-        """Start the SLIM automation"""
+    @Slot(str)
+    def threading(self, mode):
+        """Start the SLIM automation for the given mode"""
         if self.worker is not None and self.worker.is_running():
             print("Hold ur horses...")
             return
         
-        self.worker = Worker(self._cali)
+        dispatch = {
+            "mueller": self._mueller,
+            "calibration": self._cali,
+            "stokes": self._stokes,
+            "edgeLP": self._edgeLP,
+            "edgeCP": self._edgeCP,
+        }
+        
+        func = dispatch.get(mode)
+        if func is None:
+            print(f"Unknown mode: {mode}")
+            return
+        
+        self.worker = Worker(func)
         self.worker.start()
-        print("Scan started")
+        print(f"{mode} scan started")
 
-    def saveFiles(self, all_data, filename):
+    @Slot()
+    def stopScan(self):
+        """Stop the current scan"""
+        if self.worker:
+            self.worker.stop()
+            print("Stopping scan...")
+        else:
+            print("Nothing running")
+
+    def homeAll(self):
+        self.WP_DeathStar.resetHome()
+        self.WP_DeathStar.zHome()
+        self.LP_DeathStar.resetHome()
+
+    def saveFiles(self, all_data, scanType):
         timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
-        output_dir = os.path.join("data", timestamp)
+        name = self.spectro._sampleName or "sample"
+        region = self.spectro._region
+        side = self.spectro._side
+        output_dir = os.path.join("data", f"{name}_{timestamp}")
         os.makedirs(output_dir, exist_ok=True)
-        csv_filename = os.path.join(output_dir, f"{filename}.csv")
+        csv_filename = os.path.join(output_dir, f"{name}_Region{region}_{side}_{scanType}.csv")
         print(f"Saving data to: {output_dir}")
 
         with open(csv_filename, 'w', newline='') as f:
@@ -467,42 +496,101 @@ class SLIM(QObject): # Still WIP
             writer.writeheader()
             writer.writerows(all_data)
         
-        print(f"\nSaved mueller data - {len(all_data)} measurements")
+        print(f"\nSaved SLIM data - {len(all_data)} measurements")
+
+    def _stokes (self):
+        stokesSequence = [[90, 90, 45, 0],     # Polarizer
+                          [90, 45, 45, 45]]    # Waveplate 
+        all_data = [] 
+        for angleStep in range(0, 91, 10):
+            if not self.worker._is_running:
+                break
+            for s in range(len(stokesSequence[0])):
+                if not self.worker._is_running:
+                    break
+                data = self.slimScan (angleStep,angleStep,stokesSequence[1][s],stokesSequence[0][s])
+                all_data.extend(data)
+
+        self.homeAll()
+        self.saveFiles(all_data, "stokesScan")
+
+    def _edgeLP(self): 
+        all_data = [] 
+        for x in range(0, 41, 1): # 20 milimeter across the sample edge by increments of 0.5 
+            if not self.worker._is_running:
+                break
+            for angleStep in range(0, 91, 10): # PSG creates polarization states 0 to 90 degrees 
+                if not self.worker._is_running:
+                    break
+                for anaylzeStep in range(-45, 91, 45): # 2 Sets of Itensity Data to gather
+                    if not self.worker._is_running:
+                        break
+
+                    data = self.slimScan (angleStep,angleStep,anaylzeStep,anaylzeStep,float(x/2))  
+                    all_data.extend(data)
+
+        self.saveFiles(all_data, "LPscan")
+        self.homeAll()
+
+    def _edgeCP(self): 
+        all_data = [] 
+        for x in range(0, 41, 1): # 20 milimeter across the sample edge by increments of 0.5 
+            if not self.worker._is_running:
+                break
+            for angleStep in range(-45, 46, 90): # PSG creates polarization states left handed, right handed
+                if not self.worker._is_running:
+                    break
+                for anaylzeStep in range(-45, 91, 45): # 2 Sets of Itensity Data to gather
+                    if not self.worker._is_running:
+                        break
+                    data = self.slimScan (angleStep,0,anaylzeStep,anaylzeStep,float(x/2))  
+                    all_data.extend(data)
+
+        self.saveFiles(all_data, "CPscan")
+        self.homeAll()
 
     # Later on, probably change to an 18 sequence but for now we can do the min 
+    # Going to need 40 measurements for good results 
     def _mueller(self, theta = 20, N = 16):
         all_data = []
 
         for value in range(theta, (theta*N)+1, theta):
+            if not self.worker._is_running:
+                break
             data = self.slimScan(0, value, value*5, 0)
             all_data.extend(data)
             print("Collection at R1: ",value, " R2: ", value*5)
 
-        self.saveFiles(all_data, "slim_scan")
-        self.deathstar1.resetHome()
+        self.saveFiles(all_data, "muellerScan")
+        self.homeAll()
+
 
     def _cali(self):
-        self.spectro.setIntegration(20000)
-        self.deathstar1.set_Rate(10000)
+        self.WP_DeathStar.set_Rate(10000)
         cal_data = [] 
+        
         for i in range(11,3961,11):
+            if not self.worker._is_running:
+                break
             data = self.slimScan(0, i, i*5, 0)
             cal_data.extend(data)
             if (i == 1980):
                 user_input = input("Enter to Continue: ")
             print("Collection at R1: ",i, " R2: ", i*5)
-        self.saveFiles(cal_data, "PSG_Calibration")
-        self.deathstar1.resetHome()
 
-    def slimScan(self, P1, R1, R2, P2):
-        self.deathstar1.setPosition(str(R1), str(R2))
-        time.sleep(0.7) # Time for the rotation of the retarders 
+        self.saveFiles(cal_data, "PSGcalibration")
+        self.homeAll()
+
+    def slimScan(self, P1, R1, R2, P2, T1 = '', T2 = '', moveTime = 0.5):
+        self.WP_DeathStar.setPosition(str(R1), str(R2), str(T1))
+        self.LP_DeathStar.setPosition(str(P1), str(P2), str(T2))
+        time.sleep(moveTime) # Time for the rotation of the retarders 
 
         measurements = []
-        x = 0 
-        y = 0 #Change this later on, but for now they're just hard set 
-        region = 1 
-        side = 'x' 
+        x = self.spectro._scanX
+        y = self.spectro._scanY
+        region = self.spectro._region
+        side = self.spectro._side
         wavelength, intensities = self.spectro.takeSpectrum() 
 
         for i in range(len(wavelength)):
@@ -529,7 +617,7 @@ class SLIM(QObject): # Still WIP
             
 #Assuming that you have the waveplates on the exictation arm 
     def scanIntensity(self, E_wp, E_pol):
-        self.deathstar1.setPosition(str(E_pol), str(E_wp))
+        self.WP_DeathStar.setPosition(str(E_pol), str(E_wp))
         #self.deathstar2.setPosition(str(0), str(0))
         time.sleep(0.5)
 

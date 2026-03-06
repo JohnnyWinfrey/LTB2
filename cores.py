@@ -2,8 +2,7 @@ from PySide6.QtCore import QObject, Signal, Property, Slot, QThread
 from PySide6.QtWidgets import QFileDialog
 from hardware_controllers import *
 import pyqtgraph as pg
-from seabreeze.spectrometers import Spectrometer
-
+from seabreeze.spectrometers import Spectrometer, list_devices
 
 """ Create QObject classes for each hardware controller. """
 class Worker(QObject):
@@ -57,7 +56,7 @@ class XWing(QObject):
     memChanged = Signal()
     coordinatesChanged = Signal()
 
-    def __init__(self):
+    def __init__(self, comNum):
         super().__init__()
         self._x = 0.0
         self._y = 0.0
@@ -66,7 +65,7 @@ class XWing(QObject):
         self._home_y = 0.0
         self._step = 0.1  # mm per button press (change as needed)
         self.rate = 50
-        self.ac = ArduinoClient("COM7", 115200)
+        self.ac = ArduinoClient(comNum, 115200)
         self.reference = None
         self.samples = []
         print("XWing online")
@@ -234,18 +233,20 @@ class DeathStar(QObject):
     polarRotated = Signal()
     orientationChanged = Signal()
 
-    def __init__(self):
+    def __init__(self, comNum, ZAxis = False):
         super().__init__()
         self._thetaW = 0
         self._thetaP = 0
+        self._z = 0.0
         self._step = 120
         self.rate = 21000 
-        self.ac = ArduinoClient("COM7", 115200)
+        self.ac = ArduinoClient(comNum, 115200)
         self.reference = None
         self.samples = []
         self.ac.commandSend(f"G10 L20 P1 X{0} Y{0}")
         self.ac.commandSend(f"G1 X{15} Y{15} F{10000}")
         self.ac.commandSend(f"G1 X{0} Y{0} F{10000}")
+        self.ZAxis = ZAxis
         print("DeathStar online")
 
     # --- Wave Plate Anglular ---
@@ -326,14 +327,26 @@ class DeathStar(QObject):
         self._thetaP = 0
         self._thetaW = 0 
 
+    # Returns z to home
+    @Slot()
+    def zHome(self):
+        if (self.ZAxis):
+            self._z = 0.0
+            self.ac.commandSend(f"G1 Z{0} F{100}")
+            print("Z Go Home ->", self._z)
+
     @Slot(str, str)
-    def setPosition(self, p_str, w_str):
-        self.ac.commandSend(f"G1 X{p_str} Y{w_str} F{self.rate}")
+    def setPosition(self, p_str, w_str, z = ""):
+        if not (z):
+            self.ac.commandSend(f"G1 X{p_str} Y{w_str} F{self.rate}")
+        else:
+            self.ac.commandSend(f"G1 Z{z} F{100}")
+            self._z = float(z)
         if p_str.strip():
             self._thetaP = float(p_str)
         if w_str.strip():
             self._thetaW = float(w_str)
-        print("Set Position ->", self._thetaP, self._thetaW)
+        print("Set Position ->", self._thetaP, self._thetaW, z)
         self.polarRotated.emit()
         self.wavePlateRotated.emit()
 
@@ -341,12 +354,26 @@ class SpectreCore(QObject):
 
     int_Time_Changed = Signal()
     spec_Taken = Signal()
+    scanParamsChanged = Signal()
 
     def __init__(self):
         super().__init__()
         self.intTime = 500000
         self.spec = Spectrometer.from_first_available()
         self.spec.integration_time_micros(self.intTime)
+        self.specInfo = list_devices()[0]
+        self.specInfo.features
+
+        # Scan metadata (set from QML)
+        self._scanX = 0.0
+        self._scanY = 0.0
+        self._side = "x"
+        self._region = 1
+        self._sampleName = "sample"
+
+        self.intMin, self.intMax = self.specInfo.features['spectrometer'][0].get_integration_time_micros_limits()
+        self.maxIntensity = self.specInfo.features['spectrometer'][0].get_maximum_intensity()
+
         print("Spectrometer Found:", self.spec)
 
     # --- Integration Time  ---
@@ -356,15 +383,89 @@ class SpectreCore(QObject):
     
     @Slot(str)
     def setIntegration(self, value):
-        print("Set Integration Time ->", value)
-        self.intTime = int(value)
-        self.spec.integration_time_micros(self.intTime)
-        self.int_Time_Changed.emit()
+        try:
+            val = int(value)
+            if val < self.intMin:
+                print(f"Integration time {val} below minimum ({self.intMin}), clamping")
+                val = self.intMin
+            elif val > self.intMax:
+                print(f"Integration time {val} above maximum ({self.intMax}), clamping")
+                val = self.intMax
+            self.intTime = val
+            self.spec.integration_time_micros(self.intTime)
+            self.int_Time_Changed.emit()
+            print(f"Set Integration Time -> {self.intTime}")
+        except ValueError:
+            pass
 
     def takeSpectrum(self):
         wavelengths = self.spec.wavelengths()
         intensities = self.spec.intensities()
         return wavelengths, intensities
+    
+    def checkOversaturation(self, maxMI):
+        if (maxMI >= (self.maxItensity-1)):
+            print("WARNING: MEASUREMENT OVERSATURATED")
+            return True 
+        else:
+            return False 
+    
+# --- Scan metadata properties ---
+    @Property(float, notify=scanParamsChanged)
+    def scanX(self):
+        return self._scanX
+
+    @Property(float, notify=scanParamsChanged)
+    def scanY(self):
+        return self._scanY
+
+    @Property(str, notify=scanParamsChanged)
+    def side(self):
+        return self._side
+
+    @Property(str, notify=scanParamsChanged)
+    def region(self):
+        return self._region
+    
+    @Property(str, notify=scanParamsChanged)
+    def sampleName(self):
+        return self._sampleName
+
+    @Slot(str)
+    def setScanX(self, value):
+        try:
+            self._scanX = float(value)
+            self.scanParamsChanged.emit()
+            print(f"Scan X -> {self._scanX}")
+        except ValueError:
+            pass
+
+    @Slot(str)
+    def setScanY(self, value):
+        try:
+            self._scanY = float(value)
+            self.scanParamsChanged.emit()
+            print(f"Scan Y -> {self._scanY}")
+        except ValueError:
+            pass
+
+    @Slot(str)
+    def setSide(self, value):
+        self._side = value
+        self.scanParamsChanged.emit()
+        print(f"Side -> {self._side}")
+
+    @Slot(str)
+    def setRegion(self, value):
+        self._region = value
+        self.scanParamsChanged.emit()
+        print(f"Region -> {self._region}")
+
+    @Slot(str)
+    def setSampleName(self, value):
+        self._sampleName = value
+        self.scanParamsChanged.emit()
+        print(f"Sample Name -> {self._sampleName}")
 
 class Cornerstone(QObject):
     waveChanged = Signal()
@@ -708,6 +809,7 @@ class LivePlot(QObject):
         print(f"Save location set to: {path}")
 
 class PMTShield(QObject):
+    
     
     gainChanged = Signal()
 

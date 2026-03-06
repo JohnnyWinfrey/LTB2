@@ -25,7 +25,7 @@ class App(QObject):
             from automation_clusters import HyperSpectralExtinction
             
             self.backends = {
-                'xwing': XWing(),
+                'xwing': XWing("COM7"),
                 'cornerstone': Cornerstone(),
                 'pmt': PMTShield()
             }
@@ -47,7 +47,7 @@ class App(QObject):
             from automation_clusters import HyperSpectralSingleFluor
             
             self.backends = {
-                'xwing': XWing(),
+                'xwing': XWing("COM7"),
                 'cornerstone': Cornerstone(),
                 'pmt': PMTShield()
             }
@@ -65,19 +65,24 @@ class App(QObject):
             self.pageChanged.emit("singlefluor_main.qml")
             
         elif automation == "slim":
-            from cores import DeathStar, SpectreCore
+            from cores import DeathStar, SpectreCore, XWing
             from automation_clusters import SLIM
             
             self.backends = {
-                'deathstar1': DeathStar(),
-                'spectro' : SpectreCore()
+                'deathstar1': DeathStar("COM6", True),  # Waveplate Deathstar supports z axis for translation stage
+                'deathstar2': DeathStar("COM7"),
+                'spectro': SpectreCore(),
             }
-            self.backends['automation'] = SLIM(self.backends['deathstar1'], self.backends['spectro'])
+            self.backends['automation'] = SLIM(
+                self.backends['spectro'],
+                self.backends['deathstar1'],
+                self.backends['deathstar2'],
+            )
             
             self.engine.rootContext().setContextProperty("DeathStar1Backend", self.backends['deathstar1'])
-            self.engine.rootContext().setContextProperty("DeathStar2Backend", self.backends['deathstar1'])
+            self.engine.rootContext().setContextProperty("DeathStar2Backend", self.backends['deathstar2'])
             self.engine.rootContext().setContextProperty("SLIMBackend", self.backends['automation'])
-            
+            self.engine.rootContext().setContextProperty("SpectroBackend", self.backends['spectro'])
             self.pageChanged.emit("slim_main.qml")
     
     @Slot()

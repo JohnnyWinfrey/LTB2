@@ -98,7 +98,7 @@ ApplicationWindow {
                 
                 Rectangle {
                     width: 200
-                    height: 400
+                    height: 600
                     color: "#313131"
                     border.width: 3
                     
@@ -106,14 +106,14 @@ ApplicationWindow {
                         x: 8
                         y: 8
                         width: 184
-                        height: 384
+                        height: 584
                         color: "#676767"
                         radius: 10
                         border.width: 3
                         
                         Column {
                             anchors.centerIn: parent
-                            spacing: 20
+                            spacing: 12
                             
                             Text {
                                 anchors.horizontalCenter: parent.horizontalCenter
@@ -123,12 +123,14 @@ ApplicationWindow {
                                 color: "#bbf6ef"
                             }
                             
+                            // --- Scan Mode Buttons ---
+                            
                             Button {
                                 anchors.horizontalCenter: parent.horizontalCenter
                                 width: 150
-                                height: 40
-                                text: "Start SLIM"
-                                onClicked: SLIMBackend.threading()
+                                height: 35
+                                text: "Mueller"
+                                onClicked: SLIMBackend.threading("mueller")
                                 
                                 background: Rectangle {
                                     anchors.fill: parent
@@ -140,9 +142,67 @@ ApplicationWindow {
                             Button {
                                 anchors.horizontalCenter: parent.horizontalCenter
                                 width: 150
-                                height: 40
+                                height: 35
+                                text: "Calibration"
+                                onClicked: SLIMBackend.threading("calibration")
+                                
+                                background: Rectangle {
+                                    anchors.fill: parent
+                                    color: "#149700"
+                                    border.width: 2
+                                }
+                            }
+                            
+                            Button {
+                                anchors.horizontalCenter: parent.horizontalCenter
+                                width: 150
+                                height: 35
+                                text: "Stokes"
+                                onClicked: SLIMBackend.threading("stokes")
+                                
+                                background: Rectangle {
+                                    anchors.fill: parent
+                                    color: "#149700"
+                                    border.width: 2
+                                }
+                            }
+                            
+                            Button {
+                                anchors.horizontalCenter: parent.horizontalCenter
+                                width: 150
+                                height: 35
+                                text: "Linear Polar."
+                                onClicked: SLIMBackend.threading("edgeLP")
+                                
+                                background: Rectangle {
+                                    anchors.fill: parent
+                                    color: "#0a7a9e"
+                                    border.width: 2
+                                }
+                            }
+                            
+                            Button {
+                                anchors.horizontalCenter: parent.horizontalCenter
+                                width: 150
+                                height: 35
+                                text: "Circular Polar."
+                                onClicked: SLIMBackend.threading("edgeCP")
+                                
+                                background: Rectangle {
+                                    anchors.fill: parent
+                                    color: "#0a7a9e"
+                                    border.width: 2
+                                }
+                            }
+                            
+                            // --- Stop Button ---
+                            
+                            Button {
+                                anchors.horizontalCenter: parent.horizontalCenter
+                                width: 150
+                                height: 35
                                 text: "Stop"
-                                // onClicked: SLIMBackend.stopScan()
+                                onClicked: SLIMBackend.stopScan()
                                 
                                 background: Rectangle {
                                     anchors.fill: parent
@@ -231,6 +291,11 @@ ApplicationWindow {
                             }
                         }
                     }
+                }
+                Loader {
+                    width: 200
+                    height: 200
+                    source: "ScanSettings.qml"
                 }
             }
             
