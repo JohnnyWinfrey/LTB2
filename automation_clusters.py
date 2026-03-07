@@ -526,7 +526,7 @@ class SLIM(QObject): # Still WIP
                     if not self.worker._is_running:
                         break
 
-                    data = self.slimScan (angleStep,angleStep,anaylzeStep,anaylzeStep,float(x/2))  
+                    data = self.slimScan (angleStep,angleStep,anaylzeStep,anaylzeStep,T1 = 0, T2 = float(x/2))  
                     all_data.extend(data)
 
         self.saveFiles(all_data, "LPscan")
@@ -543,7 +543,7 @@ class SLIM(QObject): # Still WIP
                 for anaylzeStep in range(-45, 91, 45): # 2 Sets of Itensity Data to gather
                     if not self.worker._is_running:
                         break
-                    data = self.slimScan (angleStep,0,anaylzeStep,anaylzeStep,float(x/2))  
+                    data = self.slimScan (angleStep,0,anaylzeStep,anaylzeStep,T1 = 0, T2 = float(x/2))  
                     all_data.extend(data)
 
         self.saveFiles(all_data, "CPscan")
