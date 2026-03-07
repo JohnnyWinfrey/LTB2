@@ -69,8 +69,8 @@ class App(QObject):
             from automation_clusters import SLIM
             
             self.backends = {
-                'deathstar_PSG': DeathStar("COM7", False, "PSG"),
-                'deathstar_PSA': DeathStar("COM6", True, "PSA"),  # PSA Deathstar supports
+                'deathstar_PSG': DeathStar("COM10", False, "PSG"),
+                'deathstar_PSA': DeathStar("COM9", True, "PSA"),  # PSA Deathstar supports
                 'spectro': SpectreCore(),
             }
             self.backends['automation'] = SLIM(

@@ -582,8 +582,8 @@ class SLIM(QObject): # Still WIP
         self.homeAll()
 
     def slimScan(self, P1, R1, R2, P2, T1 = '', T2 = '', moveTime = 0.5):
-        self.PSG_DeathStar.setPosition(str(P1), str(R1), str(T2))
-        self.PSA_DeathStar.setPosition(str(P2), str(R2), str(T1))
+        self.PSG_DeathStar.setPosition(str(P1), str(R1), str(T1))
+        self.PSA_DeathStar.setPosition(str(P2), str(R2), str(T2))
         time.sleep(moveTime) # Time for the rotation of the retarders 
 
         measurements = []

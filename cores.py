@@ -333,16 +333,15 @@ class DeathStar(QObject):
     def zHome(self):
         if (self.ZAxis):
             self._z = 0.0
-            self.ac.commandSend(f"G1 Z{0} F{100}")
+            self.ac.commandSend(f"G1 Z{0} F{20}")
             print("Z Go Home ->", self._z)
 
     @Slot(str, str)
     def setPosition(self, p_str, w_str, z = ""):
-        if not (z):
-            self.ac.commandSend(f"G1 X{p_str} Y{w_str} F{self.rate}")
-        else:
-            self.ac.commandSend(f"G1 Z{z} F{100}")
+        if (z):
             self._z = float(z)
+            self.ac.commandSend(f"G1 Z{z} F{20}")
+        self.ac.commandSend(f"G1 X{p_str} Y{w_str} F{self.rate}")
         if p_str.strip():
             self._thetaP = float(p_str)
         if w_str.strip():
