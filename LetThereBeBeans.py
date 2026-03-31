@@ -25,7 +25,7 @@ class App(QObject):
             from automation_clusters import HyperSpectralExtinction
             
             self.backends = {
-                'xwing': XWing("COM7"),
+                'xwing': XWing("COM3"),
                 'cornerstone': Cornerstone(),
                 'pmt': PMTShield()
             }
@@ -47,7 +47,7 @@ class App(QObject):
             from automation_clusters import HyperSpectralSingleFluor
             
             self.backends = {
-                'xwing': XWing("COM7"),
+                'xwing': XWing("COM3"),
                 'cornerstone': Cornerstone(),
                 'pmt': PMTShield()
             }

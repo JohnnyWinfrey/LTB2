@@ -1,21 +1,31 @@
-// extinction_main.qml
+// singlefluor_main.qml
 import QtQuick
 import QtQuick.Controls
 
-ApplicationWindow {
-    visible: true
-    width: 600
-    height: 900
-    title: "Extinction"
+Rectangle {
+    anchors.fill: parent
+    color: "#6f6f6f"
     
     Row {
         anchors.fill: parent
         spacing: 0
         
-        Loader {
+        Column {
             width: 200
             height: 900
-            source: "XWingController.qml"
+            spacing: 0
+            
+            Loader {
+                width: 200
+                height: 351
+                source: "XWingController.qml"
+            }
+            
+            Loader {
+                width: 200
+                height: 200
+                source: "PMTGainShieldController.qml"
+            }
         }
         
         Column {
@@ -46,28 +56,71 @@ ApplicationWindow {
                     spacing: 10
                     
                     Button {
-                        width: 180
+                        width: 90
                         height: 30
-                        text: "Start Extinction"
-                        onClicked: ExtinctionBackend.threading()
+                        text: "← Home"
+                        onClicked: App.home()
+                        
+                        background: Rectangle {
+                            anchors.fill: parent
+                            color: "#676767"
+                            border.width: 2
+                            radius: 5
+                        }
+                        
+                        contentItem: Text {
+                            text: parent.text
+                            font.pixelSize: 10
+                            font.family: "Courier"
+                            color: "#ffffff"
+                            horizontalAlignment: Text.AlignHCenter
+                            verticalAlignment: Text.AlignVCenter
+                        }
+                    }
+                    
+                    Button {
+                        width: 130
+                        height: 30
+                        text: "Start Single Fluor"
+                        onClicked: SingleFluorBackend.threading()
                         
                         background: Rectangle {
                             anchors.fill: parent
                             color: "#149700"
                             border.width: 2
+                            radius: 5
+                        }
+                        
+                        contentItem: Text {
+                            text: parent.text
+                            font.pixelSize: 10
+                            font.family: "Courier"
+                            color: "#ffffff"
+                            horizontalAlignment: Text.AlignHCenter
+                            verticalAlignment: Text.AlignVCenter
                         }
                     }
                     
                     Button {
-                        width: 180
+                        width: 90
                         height: 30
                         text: "Stop"
-                        onClicked: ExtinctionBackend.stopScan()
+                        onClicked: SingleFluorBackend.stopScan()
                         
                         background: Rectangle {
                             anchors.fill: parent
                             color: "#d80000"
                             border.width: 2
+                            radius: 5
+                        }
+                        
+                        contentItem: Text {
+                            text: parent.text
+                            font.pixelSize: 10
+                            font.family: "Courier"
+                            color: "#ffffff"
+                            horizontalAlignment: Text.AlignHCenter
+                            verticalAlignment: Text.AlignVCenter
                         }
                     }
                 }

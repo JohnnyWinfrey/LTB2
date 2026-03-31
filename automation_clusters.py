@@ -71,6 +71,8 @@ class HyperSpectralExtinction(QObject):
         self.pmt = pmt
         self.xwing = xwing
         self.cornerstone = cornerstone
+        self.gain = 0
+        self.pmt.changeGain(self.gain)
         self.gain_map = {}
 
         print("Extinction Automation Online")
@@ -282,7 +284,7 @@ class HyperSpectralSingleFluor(QObject):
         self.cornerstone = cornerstone
         self.gain_map = {}
 
-        print("Extinction Automation Ready")
+        print("SingleFluor Ready")
      @Slot()
      def threading(self):
         """Start the extinction scan automation"""
@@ -303,7 +305,7 @@ class HyperSpectralSingleFluor(QObject):
         if self.worker:
             self.worker.stop()
             self.worker = None
-            self.pmt.commandSend("0")
+            self.pmt.changeGain(0)
             print("Stopping scan...")
     
      def _scanPosition(self, coord, scan_type):
@@ -317,8 +319,6 @@ class HyperSpectralSingleFluor(QObject):
         Returns:
             List of measurement dictionaries
         """
-        self.gain = 1
-        self.pmt.commandSend("1")
         
         step_size = (self.cornerstone.endWavelength - self.cornerstone.startWavelength) / self.cornerstone.numSteps
         
@@ -340,7 +340,7 @@ class HyperSpectralSingleFluor(QObject):
             
             wavelength = self.cornerstone.startWavelength + j * step_size
             self.cornerstone.mono.goto(wavelength)
-            time.sleep(30)
+            time.sleep(2)
             dataPoint1 = self.digi.record()
             dataPoint2 = self.digi.record()
             dataPoint3 = self.digi.record()
