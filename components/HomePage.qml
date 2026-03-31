@@ -38,5 +38,13 @@ Rectangle {
             text: "SLIM"
             onClicked: App.load("slim")
         }
+
+        Button {
+            anchors.horizontalCenter: parent.horizontalCenter
+            width: 300
+            height: 60
+            text: "XWing Scan"
+            onClicked: App.load("xwingscan")
+        }
     }
 }
