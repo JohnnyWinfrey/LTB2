@@ -476,7 +476,6 @@ class SLIM(QObject): # Still WIP
 
     def homeAll(self):
         self.PSA_DeathStar.resetHome()
-        self.PSA_DeathStar.zHome()
         self.PSG_DeathStar.resetHome()
 
     def saveFiles(self, all_data, scanType):
@@ -498,9 +497,30 @@ class SLIM(QObject): # Still WIP
         
         print(f"\nSaved SLIM data - {len(all_data)} measurements")
 
+    def saveFileSingles(self, spectrum_data, output_dir):
+        """Save a single spectrum as its own .txt file"""
+        name = self.spectro._sampleName or "sample"
+        region = self.spectro._region
+        side = self.spectro._side
+
+        first = spectrum_data[0]
+        iP = int(first['IP_Theta'])
+        L4 = int(first['CW_Theta'])
+        AP = int(first['CP_Theta'])
+
+        filename = f"{name}_Reg{region}_{side}Side_{iP}iP_{L4}L4_{AP}AP.txt"
+        filepath = os.path.join(output_dir, filename)
+
+        with open(filepath, 'w') as f:
+            for row in spectrum_data:
+                f.write(f"{row['wavelength']}\t{row['intensity']}\n")
+
+        print(f"Saved spectrum -> {filename}")
+
     def _stokes (self):
-        stokesSequence = [[90, 90, 45, 0],     # Polarizer
-                          [90, 45, 45, 45]]    # Waveplate 
+        self.PSA_DeathStar.set_Rate(6000)
+        stokesSequence = [[0, 45, 45, 0],     # Polarizer
+                          [0, 0, 45, 45]]    # Waveplate 
         all_data = [] 
         for angleStep in range(0, 91, 10):
             if not self.worker._is_running:
@@ -508,7 +528,7 @@ class SLIM(QObject): # Still WIP
             for s in range(len(stokesSequence[0])):
                 if not self.worker._is_running:
                     break
-                data = self.slimScan (angleStep,angleStep,stokesSequence[1][s],stokesSequence[0][s])
+                data = self.slimScan (angleStep,angleStep,stokesSequence[1][s],stokesSequence[0][s], moveTime = 1)
                 all_data.extend(data)
 
         self.homeAll()
@@ -519,10 +539,10 @@ class SLIM(QObject): # Still WIP
         for x in range(0, 41, 1): # 20 milimeter across the sample edge by increments of 0.5 
             if not self.worker._is_running:
                 break
-            for angleStep in range(0, 91, 10): # PSG creates polarization states 0 to 90 degrees 
+            for angleStep in range(0, 91, 90): # PSG creates polarization states 0 to 90 degrees 
                 if not self.worker._is_running:
                     break
-                for anaylzeStep in range(-45, 91, 45): # 2 Sets of Itensity Data to gather
+                for anaylzeStep in range(0, 91, 90): # 2 Sets of Itensity Data to gather irradaiance 
                     if not self.worker._is_running:
                         break
 
@@ -540,7 +560,7 @@ class SLIM(QObject): # Still WIP
             for angleStep in range(-45, 46, 90): # PSG creates polarization states left handed, right handed
                 if not self.worker._is_running:
                     break
-                for anaylzeStep in range(-45, 91, 45): # 2 Sets of Itensity Data to gather
+                for anaylzeStep in range(0, 91, 90): # 2 Sets of Itensity Data to gather
                     if not self.worker._is_running:
                         break
                     data = self.slimScan (angleStep,0,anaylzeStep,anaylzeStep,T1 = 0, T2 = float(x/2))  
@@ -566,22 +586,9 @@ class SLIM(QObject): # Still WIP
 
 
     def _cali(self):
-        self.PSA_DeathStar.set_Rate(10000)
-        cal_data = [] 
-        
-        for i in range(11,3961,11):
-            if not self.worker._is_running:
-                break
-            data = self.slimScan(0, i, i*5, 0)
-            cal_data.extend(data)
-            if (i == 1980):
-                user_input = input("Enter to Continue: ")
-            print("Collection at R1: ",i, " R2: ", i*5)
+        self.spectro.takeBackground()
 
-        self.saveFiles(cal_data, "PSGcalibration")
-        self.homeAll()
-
-    def slimScan(self, P1, R1, R2, P2, T1 = '', T2 = '', moveTime = 0.5):
+    def slimScan(self, P1, R1, R2, P2, T1 = '', T2 = '', moveTime = 0.75):
         self.PSG_DeathStar.setPosition(str(P1), str(R1), str(T1))
         self.PSA_DeathStar.setPosition(str(P2), str(R2), str(T2))
         time.sleep(moveTime) # Time for the rotation of the retarders 

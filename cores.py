@@ -4,6 +4,7 @@ from hardware_controllers import *
 import pyqtgraph as pg
 from seabreeze.spectrometers import Spectrometer, list_devices
 
+
 """ Create QObject classes for each hardware controller. """
 class Worker(QObject):
     """ Object that creates a thread for automation logic then moves logic
@@ -239,7 +240,7 @@ class DeathStar(QObject):
         self._thetaP = 0
         self._z = 0.0
         self._step = 120
-        self.rate = 21000 
+        self.rate = 10000 
         self.ac = ArduinoClient(comNum, 115200)
         self.reference = None
         self.samples = []
@@ -333,14 +334,14 @@ class DeathStar(QObject):
     def zHome(self):
         if (self.ZAxis):
             self._z = 0.0
-            self.ac.commandSend(f"G1 Z{0} F{20}")
+            self.ac.commandSend(f"G1 Z{0} F{40}")
             print("Z Go Home ->", self._z)
 
     @Slot(str, str)
     def setPosition(self, p_str, w_str, z = ""):
         if (z):
             self._z = float(z)
-            self.ac.commandSend(f"G1 Z{z} F{20}")
+            self.ac.commandSend(f"G1 Z{z} F{40}")
         self.ac.commandSend(f"G1 X{p_str} Y{w_str} F{self.rate}")
         if p_str.strip():
             self._thetaP = float(p_str)
@@ -358,11 +359,12 @@ class SpectreCore(QObject):
 
     def __init__(self):
         super().__init__()
-        self.intTime = 500000
+        self.intTime = 10000000
         self.spec = Spectrometer.from_first_available()
         self.spec.integration_time_micros(self.intTime)
         self.specInfo = list_devices()[0]
-        self.specInfo.features
+        self.background = None 
+        self.scansToAvg = 1
 
         # Scan metadata (set from QML)
         self._scanX = 0.0
@@ -398,9 +400,22 @@ class SpectreCore(QObject):
         except ValueError:
             pass
 
+    def takeBackground(self):
+        #self.spec.integration_time_micros(self.intTime)
+        self.spec.wavelengths()
+        self.background = self.spec.intensities(correct_dark_counts=True)
+        print("Background updated!")
+        print(f"Peak intensity = {max(self.background)}")
+
+
     def takeSpectrum(self):
         wavelengths = self.spec.wavelengths()
-        intensities = self.spec.intensities()
+        intensities = 0 
+
+        for i in range(self.scansToAvg):
+            intensities += self.spec.intensities(correct_dark_counts=True) - self.background
+
+        intensities = (intensities/self.scansToAvg)
         return wavelengths, intensities
     
     def checkOversaturation(self, maxMI):
