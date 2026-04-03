@@ -3,6 +3,7 @@ from hardware_controllers import *
 from cores import LivePlot
 import os
 import csv
+import re
 import niscope
 import numpy as np
 import pyqtgraph as pg
@@ -71,6 +72,8 @@ class HyperSpectralExtinction(QObject):
         self.pmt = pmt
         self.xwing = xwing
         self.cornerstone = cornerstone
+        self.gain = 0
+        self.pmt.changeGain(self.gain)
         self.gain_map = {}
 
         print("Extinction Automation Online")
@@ -282,7 +285,7 @@ class HyperSpectralSingleFluor(QObject):
         self.cornerstone = cornerstone
         self.gain_map = {}
 
-        print("Extinction Automation Ready")
+        print("SingleFluor Ready")
      @Slot()
      def threading(self):
         """Start the extinction scan automation"""
@@ -303,7 +306,7 @@ class HyperSpectralSingleFluor(QObject):
         if self.worker:
             self.worker.stop()
             self.worker = None
-            self.pmt.commandSend("0")
+            self.pmt.changeGain(0)
             print("Stopping scan...")
     
      def _scanPosition(self, coord, scan_type):
@@ -317,8 +320,6 @@ class HyperSpectralSingleFluor(QObject):
         Returns:
             List of measurement dictionaries
         """
-        self.gain = 1
-        self.pmt.commandSend("1")
         
         step_size = (self.cornerstone.endWavelength - self.cornerstone.startWavelength) / self.cornerstone.numSteps
         
@@ -340,7 +341,7 @@ class HyperSpectralSingleFluor(QObject):
             
             wavelength = self.cornerstone.startWavelength + j * step_size
             self.cornerstone.mono.goto(wavelength)
-            time.sleep(30)
+            time.sleep(2)
             dataPoint1 = self.digi.record()
             dataPoint2 = self.digi.record()
             dataPoint3 = self.digi.record()
@@ -629,4 +630,130 @@ class SLIM(QObject): # Still WIP
         time.sleep(0.5)
 
         #self.deathstar2.setPosition(str(90), str(90))
-        time.sleep(0.5)  
+        time.sleep(0.5)
+
+
+class XWingScan(QObject):
+    progressChanged = Signal(str)
+    statusChanged   = Signal(str)
+
+    def __init__(self, xwing, spectro):
+        super().__init__()
+        self.xwing   = xwing
+        self.spectro = spectro
+        self.worker  = None
+        self._sample_name      = "sample"
+        self._nx               = 5
+        self._ny               = 5
+        self._spacing          = 0.5     # mm, fixed
+        self._integration_time = 500000  # µs = 500 ms
+        print("XWingScan Automation Ready")
+
+    @Slot(str)
+    def setSampleName(self, value):
+        self._sample_name = value.strip()
+
+    @Slot(str)
+    def setNx(self, value):
+        try:
+            self._nx = max(1, int(value))
+        except ValueError:
+            pass
+
+    @Slot(str)
+    def setNy(self, value):
+        try:
+            self._ny = max(1, int(value))
+        except ValueError:
+            pass
+
+    @Slot(str)
+    def setIntegrationTime(self, value):
+        try:
+            self._integration_time = int(value)
+            self.spectro.setIntegration(value)
+        except ValueError:
+            pass
+
+    @Slot()
+    def threading(self):
+        if self.worker is not None and self.worker.is_running():
+            print("Hold ur horses...")
+            return
+        self.worker = Worker(self._scan)
+        self.worker.start()
+
+    @Slot()
+    def stopScan(self):
+        if self.worker:
+            self.worker.stop()
+        self.statusChanged.emit("Stopped.")
+
+    def _scan(self):
+        origin_x = self.xwing._x
+        origin_y = self.xwing._y
+
+        timestamp  = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+        output_dir = os.path.join("data", timestamp)
+        os.makedirs(output_dir, exist_ok=True)
+
+        safe_name    = re.sub(r'[^\w\-]', '_', self._sample_name) or "sample"
+        csv_filename = os.path.join(output_dir, f"{safe_name}_xwing_scan.csv")
+
+        self.spectro.setIntegration(str(self._integration_time))
+        self.statusChanged.emit("Running...")
+        print(f"XWing scan: {self._nx}x{self._ny} pts, spacing={self._spacing}mm, "
+              f"integration={self._integration_time}µs")
+        print(f"Saving to: {csv_filename}")
+
+        total_points = self._nx * self._ny
+        point_num    = 0
+
+        with open(csv_filename, 'w', newline='') as f:
+            writer = csv.DictWriter(
+                f, fieldnames=['sample_name', 'x', 'y', 'wavelength', 'intensity'])
+            writer.writeheader()
+
+            for iy in range(self._ny):
+                if not self.worker._is_running:
+                    break
+                # Boustrophedon (snake) scan to minimise stage travel
+                ix_range = range(self._nx) if iy % 2 == 0 else range(self._nx - 1, -1, -1)
+
+                for ix in ix_range:
+                    if not self.worker._is_running:
+                        break
+
+                    target_x = origin_x + ix * self._spacing
+                    target_y = origin_y + iy * self._spacing
+
+                    self.xwing.ac.commandSend(
+                        f"G1 X{target_x:.4f} Y{target_y:.4f} F{self.xwing.rate}")
+                    time.sleep(1.5)
+
+                    # Update UI position readouts
+                    self.xwing._x = target_x
+                    self.xwing._y = target_y
+                    self.xwing.xChanged.emit()
+                    self.xwing.yChanged.emit()
+
+                    wavelengths, intensities = self.spectro.takeSpectrum()
+
+                    for i in range(len(wavelengths)):
+                        writer.writerow({
+                            'sample_name': self._sample_name,
+                            'x':           round(target_x, 4),
+                            'y':           round(target_y, 4),
+                            'wavelength':  wavelengths[i],
+                            'intensity':   intensities[i],
+                        })
+                    f.flush()
+
+                    point_num += 1
+                    self.progressChanged.emit(f"Point {point_num}/{total_points}")
+                    print(f"  Point {point_num}/{total_points}: "
+                          f"X={target_x:.3f}, Y={target_y:.3f}")
+
+        status = "Done." if self.worker._is_running else "Stopped."
+        self.statusChanged.emit(f"{status} Saved: {csv_filename}")
+        print(f"Scan complete. {point_num} points measured.")

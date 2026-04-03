@@ -10,10 +10,22 @@ Rectangle {
         anchors.fill: parent
         spacing: 0
         
-        Loader {
+        Column {
             width: 200
             height: 900
-            source: "XWingController.qml"
+            spacing: 0
+            
+            Loader {
+                width: 200
+                height: 351
+                source: "XWingController.qml"
+            }
+            
+            Loader {
+                width: 200
+                height: 200
+                source: "PMTGainShieldController.qml"
+            }
         }
         
         Column {

@@ -25,7 +25,7 @@ class App(QObject):
             from automation_clusters import HyperSpectralExtinction
             
             self.backends = {
-                'xwing': XWing("COM7"),
+                'xwing': XWing("COM3"),
                 'cornerstone': Cornerstone(),
                 'pmt': PMTShield()
             }
@@ -47,7 +47,7 @@ class App(QObject):
             from automation_clusters import HyperSpectralSingleFluor
             
             self.backends = {
-                'xwing': XWing("COM7"),
+                'xwing': XWing("COM3"),
                 'cornerstone': Cornerstone(),
                 'pmt': PMTShield()
             }
@@ -84,7 +84,26 @@ class App(QObject):
             self.engine.rootContext().setContextProperty("SLIMBackend", self.backends['automation'])
             self.engine.rootContext().setContextProperty("SpectroBackend", self.backends['spectro'])
             self.pageChanged.emit("slim_main.qml")
-    
+
+        elif automation == "xwingscan":
+            from cores import XWing, SpectreCore
+            from automation_clusters import XWingScan
+
+            self.backends = {
+                'xwing':  XWing(),
+                'spectro': SpectreCore()
+            }
+            self.backends['automation'] = XWingScan(
+                self.backends['xwing'],
+                self.backends['spectro']
+            )
+
+            self.engine.rootContext().setContextProperty("XWingBackend", self.backends['xwing'])
+            self.engine.rootContext().setContextProperty("SpectreBackend", self.backends['spectro'])
+            self.engine.rootContext().setContextProperty("XWingScanBackend", self.backends['automation'])
+
+            self.pageChanged.emit("xwingscan_main.qml")
+
     @Slot()
     def home(self):
         self.pageChanged.emit("HomePage.qml")
