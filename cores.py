@@ -302,7 +302,7 @@ class DeathStar(QObject):
             self.ac.commandSend(f"G1 Z{0} F{40}")
             print("Z Go Home ->", self._z)
 
-    # Implement such that we account for overflow
+
     @Slot(str, str)
     def setPosition(self, p_str, w_str, z = ""):
         if (z):

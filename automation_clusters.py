@@ -571,8 +571,9 @@ class SLIM(QObject): # Still WIP
         self.saveFiles(all_data, "CPscan")
         self.homeAll()
 
-    # Later on, probably change to an 18 sequence but for now we can do the min 
-    # Going to need 40 measurements for good results 
+    # So there's a very specific error that comes from using Mueller, because it's the only automation that exceeds 360
+    # If you cancel mueller automation, it doesn't home. So the display while showing some orientation as n/360, is actually
+    # some number N*360 + n in the code, so you if try to manuelly change it to like something under 360, it'll freak out and rotate a lot
     def _mueller(self, theta = 20, N = 16):
         all_data = []
 
