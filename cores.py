@@ -249,6 +249,8 @@ class DeathStar(QObject):
         self.ZAxis = ZAxis
         self.name = id
         print(self.name, " DeathStar online")
+        self.polarRotated.emit()
+        self.wavePlateRotated.emit()
 
     # --- Wave Plate Anglular ---
     @Property(int, notify=wavePlateRotated)
@@ -263,11 +265,11 @@ class DeathStar(QObject):
     # --- String versions for your labels ---
     @Property(str, notify=wavePlateRotated)
     def wPosString(self):
-        return f"{(self._thetaW%360):.3f}"
+        return f"{(self._thetaW%360):.2f}"
 
     @Property(str, notify=polarRotated)
     def pPosString(self):
-        return f"{(self._thetaP%360):.3f}"
+        return f"{(self._thetaP%360):.2f}"
     
     @Slot()
     def set_Rate(self, newRate):
@@ -293,6 +295,8 @@ class DeathStar(QObject):
         print("Set Zero ->", self._thetaP, self._thetaW)
         self._thetaP = 0
         self._thetaW = 0 
+        self.polarRotated.emit()
+        self.wavePlateRotated.emit()
 
     # Returns z to home
     @Slot()
