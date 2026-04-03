@@ -15,9 +15,9 @@ Rectangle {
     property bool userEditingW: false
     
     function getBackend() {
-        if (deathStarBackend === "DeathStar1Backend") {
+        if (deathStarBackend === "PSG_Backend") {
             return DeathStar1Backend
-        } else if (deathStarBackend === "DeathStar2Backend") {
+        } else if (deathStarBackend === "PSA_Backend") {
             return DeathStar2Backend
         } else {
             return DeathStarBackend
