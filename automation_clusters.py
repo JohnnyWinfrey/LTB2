@@ -498,6 +498,7 @@ class SLIM(QObject): # Still WIP
         
         print(f"\nSaved SLIM data - {len(all_data)} measurements")
 
+# This is for saving measurements to a single file. 
     def saveFileSingles(self, spectrum_data, output_dir):
         """Save a single spectrum as its own .txt file"""
         name = self.spectro._sampleName or "sample"

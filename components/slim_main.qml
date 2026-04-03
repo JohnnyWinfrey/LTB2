@@ -80,7 +80,7 @@ ApplicationWindow {
                 
                 Loader {
                     width: 200
-                    height: 351
+                    height: 200
                     source: "DeathStarController.qml"
                     
                     onLoaded: {
@@ -143,13 +143,30 @@ ApplicationWindow {
                                 anchors.horizontalCenter: parent.horizontalCenter
                                 width: 150
                                 height: 35
-                                text: "Calibration"
+                                text: "Background"
                                 onClicked: SLIMBackend.threading("calibration")
                                 
                                 background: Rectangle {
                                     anchors.fill: parent
                                     color: "#149700"
                                     border.width: 2
+                                }
+                            }
+                            
+                            Rectangle {
+                                anchors.horizontalCenter: parent.horizontalCenter
+                                width: 150
+                                height: 25
+                                color: "#000000"
+                                border.width: 1
+                                radius: 4
+
+                                Text {
+                                    anchors.centerIn: parent
+                                    text: "BG: " + SpectroBackend.bgCounts
+                                    font.pixelSize: 12
+                                    font.family: "OCR A"
+                                    color: "#ff6d00"
                                 }
                             }
                             
@@ -324,7 +341,7 @@ ApplicationWindow {
                 
                 Loader {
                     width: 200
-                    height: 351
+                    height: 200
                     source: "DeathStarController.qml"
                     
                     onLoaded: {

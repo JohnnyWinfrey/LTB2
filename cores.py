@@ -239,7 +239,6 @@ class DeathStar(QObject):
         self._thetaW = 0
         self._thetaP = 0
         self._z = 0.0
-        self._step = 120
         self.rate = 10000 
         self.ac = ArduinoClient(comNum, 115200)
         self.reference = None
@@ -254,59 +253,25 @@ class DeathStar(QObject):
     # --- Wave Plate Anglular ---
     @Property(int, notify=wavePlateRotated)
     def wPos(self):
-        return self._thetaW
+        return self._thetaW%360
 
     # --- Polarizer Angular Position  ---
     @Property(int, notify=polarRotated)
     def pPos(self):
-        return self._thetaP
+        return self._thetaP%360
 
     # --- String versions for your labels ---
     @Property(str, notify=wavePlateRotated)
     def wPosString(self):
-        return f"{self._thetaW:.3f}"
+        return f"{(self._thetaW%360):.3f}"
 
     @Property(str, notify=polarRotated)
     def pPosString(self):
-        return f"{self._thetaP:.3f}"
+        return f"{(self._thetaP%360):.3f}"
     
     @Slot()
     def set_Rate(self, newRate):
         self.rate = newRate
-
-    # --- Movement slots (called from QML. Test with cmd first) ---
-    @Slot()
-    def moveW_CW(self):
-        
-        self._thetaW += self._step
-        self.ac.commandSend(f"G1 Y{self._thetaW} F{self.rate}")
-        print("Move Up ->", self._thetaW)
-        self.wavePlateRotated.emit()
-
-
-    @Slot()
-    def moveW_CC(self):
-        
-        self._thetaW -= self._step
-        self.ac.commandSend(f"G1 Y{self._thetaW} F{self.rate}")
-        print("Move Down ->", self._thetaW)
-        self.wavePlateRotated.emit()
-
-    @Slot()
-    def moveP_CW(self):
-        
-        self._thetaP += self._step
-        self.ac.commandSend(f"G1 X{self._thetaP} F{self.rate}")
-        print("Rotate Right ->", self._thetaP)
-        self.polarRotated.emit()
-
-    @Slot()
-    def moveP_CC(self):
-        
-        self._thetaP -= self._step
-        self.ac.commandSend(f"G1 X{self._thetaP} F{self.rate}")
-        print("Rotate Left ->", self._thetaP)
-        self.polarRotated.emit()
 
     # Returns to your 'home', ususally the nearest 0th degree 
     @Slot()
@@ -318,14 +283,14 @@ class DeathStar(QObject):
         self.polarRotated.emit()
         self.wavePlateRotated.emit()
 
-    # Returns to the 0th degree and sets it to home 
+    # Returns to the nearest 0th degree and sets it to home 
     @Slot()
     def resetHome(self):
         returnP = self._thetaP%360
         returnW = self._thetaW%360
         self.ac.commandSend(f"G1 X{self._thetaP-returnP} Y{self._thetaW-returnW} F{self.rate}")
         self.ac.commandSend(f"G10 L20 P1 X{0} Y{0}")
-        print("Set Home ->", self._thetaP, self._thetaW)
+        print("Set Zero ->", self._thetaP, self._thetaW)
         self._thetaP = 0
         self._thetaW = 0 
 
@@ -337,6 +302,7 @@ class DeathStar(QObject):
             self.ac.commandSend(f"G1 Z{0} F{40}")
             print("Z Go Home ->", self._z)
 
+    # Implement such that we account for overflow
     @Slot(str, str)
     def setPosition(self, p_str, w_str, z = ""):
         if (z):
@@ -356,6 +322,7 @@ class SpectreCore(QObject):
     int_Time_Changed = Signal()
     spec_Taken = Signal()
     scanParamsChanged = Signal()
+    backgroundChanged = Signal()
 
     def __init__(self):
         super().__init__()
@@ -365,6 +332,7 @@ class SpectreCore(QObject):
         self.specInfo = list_devices()[0]
         self.background = None 
         self.scansToAvg = 1
+        bgCounts = 0.0
 
         # Scan metadata (set from QML)
         self._scanX = 0.0
@@ -382,6 +350,10 @@ class SpectreCore(QObject):
     @Property(int, notify=int_Time_Changed)
     def integration(self):
         return self.intTime
+    
+    @Property(str, notify=backgroundChanged)
+    def bgCounts(self):
+        return f"{self._bgCounts:.1f}"
     
     @Slot(str)
     def setIntegration(self, value):
@@ -401,11 +373,13 @@ class SpectreCore(QObject):
             pass
 
     def takeBackground(self):
-        #self.spec.integration_time_micros(self.intTime)
         self.spec.wavelengths()
         self.background = self.spec.intensities(correct_dark_counts=True)
-        print("Background updated!")
-        print(f"Peak intensity = {max(self.background)}")
+        sorted_bg = sorted(self.background, reverse=True)
+        top_10_count = max(1, len(sorted_bg) // 10)
+        self._bgCounts = sum(sorted_bg[:top_10_count]) / top_10_count
+        self.backgroundChanged.emit()
+        print(f"Background updated! Avg top 10%: {self._bgCounts:.1f}")
 
 
     def takeSpectrum(self):
