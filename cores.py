@@ -390,8 +390,13 @@ class SpectreCore(QObject):
         wavelengths = self.spec.wavelengths()
         intensities = 0 
 
+        if (self.background == None):
+            bg = 0
+        else:
+            bg = self.background
+
         for i in range(self.scansToAvg):
-            intensities += self.spec.intensities(correct_dark_counts=True) - self.background
+            intensities += self.spec.intensities(correct_dark_counts=True) - bg
 
         intensities = (intensities/self.scansToAvg)
         return wavelengths, intensities
