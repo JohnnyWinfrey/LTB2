@@ -549,8 +549,8 @@ class SLIM(QObject):
         #   [IP_Theta, CP_Theta]  (polarizer angles)
         #   [IW_Theta, CW_Theta] is always [angleStep, waveplate_angle]
         # FIX 2: named the sequence indices clearly to avoid axis confusion
-        stokes_IP = [90, 90, 45, 0]   # PSA polarizer angles
-        stokes_CW = [45, 45, 45, 45]  # PSA waveplate angles  ← was stokesSequence[1]
+        stokes_IP = [0, 45, 45, 0]   # PSA polarizer angles
+        stokes_CW = [0, 0, 45, 45]  # PSA waveplate angles  
         # NOTE: original had stokesSequence[1] = [90,45,45,45] — verify these
         #       hardware values are correct for your Stokes basis before running.
  
