@@ -332,7 +332,7 @@ class SpectreCore(QObject):
         self.specInfo = list_devices()[0]
         self.background = None 
         self.scansToAvg = 1
-        bgCounts = 0.0
+        self._bgCounts = 0.0
 
         # Scan metadata (set from QML)
         self._scanX = 0.0
