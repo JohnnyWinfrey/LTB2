@@ -330,7 +330,7 @@ class SpectreCore(QObject):
 
     def __init__(self):
         super().__init__()
-        self.intTime = 10000000
+        self.intTime = 500000
         self.spec = Spectrometer.from_first_available()
         self.spec.integration_time_micros(self.intTime)
         self.specInfo = list_devices()[0]
