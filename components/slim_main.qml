@@ -188,7 +188,7 @@ ApplicationWindow {
                                 anchors.horizontalCenter: parent.horizontalCenter
                                 width: 150
                                 height: 35
-                                text: "Linear Polar."
+                                text: "Planar Diffraction"
                                 onClicked: SLIMBackend.threading("edgeLP")
                                 
                                 background: Rectangle {
