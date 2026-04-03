@@ -334,9 +334,9 @@ class SpectreCore(QObject):
         self.spec = Spectrometer.from_first_available()
         self.spec.integration_time_micros(self.intTime)
         self.specInfo = list_devices()[0]
-        self.background = None 
+        self.background = 0.0 
         self.scansToAvg = 1
-        self._bgCounts = 0.0
+        self._bgCounts = 0.0  #peak average
 
         # Scan metadata (set from QML)
         self._scanX = 0.0
@@ -390,13 +390,8 @@ class SpectreCore(QObject):
         wavelengths = self.spec.wavelengths()
         intensities = 0 
 
-        if (self.background == None):
-            bg = 0
-        else:
-            bg = self.background
-
         for i in range(self.scansToAvg):
-            intensities += self.spec.intensities(correct_dark_counts=True) - bg
+            intensities += self.spec.intensities(correct_dark_counts=True) - self.background
 
         intensities = (intensities/self.scansToAvg)
         return wavelengths, intensities
