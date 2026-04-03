@@ -124,21 +124,6 @@ ApplicationWindow {
                             }
                             
                             // --- Scan Mode Buttons ---
-                            
-                            Button {
-                                anchors.horizontalCenter: parent.horizontalCenter
-                                width: 150
-                                height: 35
-                                text: "Mueller"
-                                onClicked: SLIMBackend.threading("mueller")
-                                
-                                background: Rectangle {
-                                    anchors.fill: parent
-                                    color: "#149700"
-                                    border.width: 2
-                                }
-                            }
-                            
                             Button {
                                 anchors.horizontalCenter: parent.horizontalCenter
                                 width: 150
@@ -169,6 +154,21 @@ ApplicationWindow {
                                     color: "#ff6d00"
                                 }
                             }
+
+                            Button {
+                                anchors.horizontalCenter: parent.horizontalCenter
+                                width: 150
+                                height: 35
+                                text: "Mueller"
+                                onClicked: SLIMBackend.threading("mueller")
+                                
+                                background: Rectangle {
+                                    anchors.fill: parent
+                                    color: "#149700"
+                                    border.width: 2
+                                }
+                            }
+                            
                             
                             Button {
                                 anchors.horizontalCenter: parent.horizontalCenter

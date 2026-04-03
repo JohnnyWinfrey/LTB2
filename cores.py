@@ -357,7 +357,7 @@ class SpectreCore(QObject):
     
     @Property(str, notify=backgroundChanged)
     def bgCounts(self):
-        return f"{self._bgCounts:.1f}"
+        return f"{self._bgCounts:.2f}"
     
     @Slot(str)
     def setIntegration(self, value):
@@ -383,7 +383,7 @@ class SpectreCore(QObject):
         top_10_count = max(1, len(sorted_bg) // 10)
         self._bgCounts = sum(sorted_bg[:top_10_count]) / top_10_count
         self.backgroundChanged.emit()
-        print(f"Background updated! Avg top 10%: {self._bgCounts:.1f}")
+        print(f"Background updated! Avg top 10%: {self._bgCounts:.2f}")
 
 
     def takeSpectrum(self):

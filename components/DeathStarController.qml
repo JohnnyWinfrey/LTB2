@@ -76,7 +76,7 @@ Rectangle {
                         // Update from backend when not editing
                         Connections {
                             target: getBackend()
-                            function onPolarRotated() {
+                            function polarRotated() {
                                 if (!userEditingP) {
                                     polarInput.text = getBackend().pPosString
                                 }
@@ -128,7 +128,7 @@ Rectangle {
 
                         Connections {
                             target: getBackend()
-                            function onWavePlateRotated() {
+                            function wavePlateRotated() {
                                 if (!userEditingW) {
                                     wavePlateInput.text = getBackend().wPosString
                                 }
