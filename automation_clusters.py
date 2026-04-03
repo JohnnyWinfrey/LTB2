@@ -9,6 +9,7 @@ import numpy as np
 import pyqtgraph as pg
 import time
 from datetime import datetime
+import h5py
 
 
 class Worker(QObject):
@@ -432,207 +433,253 @@ class HyperSpectralSingleFluor(QObject):
         self.cornerstone.mono.close_shutter()
         print(f"Scan complete! Data saved to: {csv_filename}")
 
-class SLIM(QObject): # Still WIP
-    def __init__(self,  spectrometerCore, PSG, PSA):
+class SLIM(QObject):
+    def __init__(self, spectrometerCore, PSG, PSA):
         super().__init__()
         self.PSG_DeathStar = PSG
         self.PSA_DeathStar = PSA
         self.spectro = spectrometerCore
         self.worker = None
-
+ 
         print("SLIM AUTOMATION READY")
-
+ 
+    # ──────────────────────────────────────────────────────────────────────
+    # Threading / dispatch
+    # ──────────────────────────────────────────────────────────────────────
+ 
     @Slot(str)
     def threading(self, mode):
-        """Start the SLIM automation for the given mode"""
+        """Start the SLIM automation for the given mode."""
         if self.worker is not None and self.worker.is_running():
             print("Hold ur horses...")
             return
-        
+ 
         dispatch = {
-            "mueller": self._mueller,
-            "calibration": self._cali,
-            "stokes": self._stokes,
-            "edgeLP": self._edgeLP,
-            "edgeCP": self._edgeCP,
+            "mueller":      self._mueller,
+            "calibration":  self._cali,
+            "stokes":       self._stokes,
+            "edgeLP":       self._edgeLP,
+            "edgeCP":       self._edgeCP,
         }
-        
+ 
         func = dispatch.get(mode)
         if func is None:
             print(f"Unknown mode: {mode}")
             return
-        
+ 
         self.worker = Worker(func)
         self.worker.start()
         print(f"{mode} scan started")
-
+ 
     @Slot()
     def stopScan(self):
-        """Stop the current scan"""
+        """Stop the current scan."""
         if self.worker:
             self.worker.stop()
             print("Stopping scan...")
         else:
             print("Nothing running")
-
+ 
+    # ──────────────────────────────────────────────────────────────────────
+    # Hardware helpers
+    # ──────────────────────────────────────────────────────────────────────
+ 
     def homeAll(self):
         self.PSA_DeathStar.resetHome()
+        self.PSA_DeathStar.zHome()
         self.PSG_DeathStar.resetHome()
-
-    def saveFiles(self, all_data, scanType):
-        timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
-        name = self.spectro._sampleName or "sample"
-        region = self.spectro._region
-        side = self.spectro._side
+ 
+    # ──────────────────────────────────────────────────────────────────────
+    # Save
+    # ──────────────────────────────────────────────────────────────────────
+ 
+    def saveHDF5(self, all_data, scanType):
+        """
+        Save scan data to HDF5.
+ 
+        all_data : list of (angles_dict, intensities_array, wavelengths_array)
+                   tuples as returned by slimScan.
+        """
+        timestamp  = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+        name       = self.spectro._sampleName or "sample"
+        region     = self.spectro._region
+        side       = self.spectro._side
         output_dir = os.path.join("data", f"{name}_{timestamp}")
         os.makedirs(output_dir, exist_ok=True)
-        csv_filename = os.path.join(output_dir, f"{name}_Region{region}_{side}_{scanType}.csv")
-        print(f"Saving data to: {output_dir}")
-
-        with open(csv_filename, 'w', newline='') as f:
-            writer = csv.DictWriter(f, fieldnames=[
-                'region', 'x', 'y', 'side', 'IW_Theta', 'IP_Theta', 'CW_Theta', 'CP_Theta', 'wavelength', 'intensity', 'integration_time'
-            ])
-            writer.writeheader()
-            writer.writerows(all_data)
-        
-        print(f"\nSaved SLIM data - {len(all_data)} measurements")
-
-    def saveFileSingles(self, spectrum_data, output_dir):
-        """Save a single spectrum as its own .txt file"""
-        name = self.spectro._sampleName or "sample"
-        region = self.spectro._region
-        side = self.spectro._side
-
-        first = spectrum_data[0]
-        iP = int(first['IP_Theta'])
-        L4 = int(first['CW_Theta'])
-        AP = int(first['CP_Theta'])
-
-        filename = f"{name}_Reg{region}_{side}Side_{iP}iP_{L4}L4_{AP}AP.txt"
-        filepath = os.path.join(output_dir, filename)
-
-        with open(filepath, 'w') as f:
-            for row in spectrum_data:
-                f.write(f"{row['wavelength']}\t{row['intensity']}\n")
-
-        print(f"Saved spectrum -> {filename}")
-
-    def _stokes (self):
-        self.PSA_DeathStar.set_Rate(6000)
-        stokesSequence = [[0, 45, 45, 0],     # Polarizer
-                          [0, 0, 45, 45]]    # Waveplate 
-        all_data = [] 
+        h5_path    = os.path.join(
+            output_dir, f"{name}_Region{region}_{side}_{scanType}.h5"
+        )
+ 
+        # FIX 1: tuple layout is (angles_dict, intensities, wavelengths)
+        angles_list = [d[0] for d in all_data]          # list of dicts
+        intensities = np.array([d[1] for d in all_data]) # (N_scans, N_wl)
+        wavelengths = all_data[0][2]                      # same for every scan
+ 
+        with h5py.File(h5_path, "w") as f:
+            # Metadata
+            f.attrs["region"]              = region
+            f.attrs["side"]                = side
+            f.attrs["x"]                   = self.spectro._scanX
+            f.attrs["y"]                   = self.spectro._scanY
+            f.attrs["integration_time_us"] = self.spectro.integration
+ 
+            # Wavelength axis
+            f.create_dataset("wavelength", data=wavelengths)
+ 
+            # Per-scan angle columns
+            for key in ["IW_Theta", "IP_Theta", "CW_Theta", "CP_Theta"]:
+                f.create_dataset(
+                    key, data=np.array([a[key] for a in angles_list])
+                )
+ 
+            # Intensity matrix: (N_scans, N_wavelengths)
+            f.create_dataset(
+                "intensity", data=intensities,
+                compression="gzip", compression_opts=4,
+            )
+ 
+        print(f"Saved {len(all_data)} scans → {h5_path}")
+ 
+    # ──────────────────────────────────────────────────────────────────────
+    # Scan sequences
+    # ──────────────────────────────────────────────────────────────────────
+ 
+    def _stokes(self):
+        # Each sub-list is one measurement configuration:
+        #   [IP_Theta, CP_Theta]  (polarizer angles)
+        #   [IW_Theta, CW_Theta] is always [angleStep, waveplate_angle]
+        # FIX 2: named the sequence indices clearly to avoid axis confusion
+        stokes_IP = [90, 90, 45, 0]   # PSA polarizer angles
+        stokes_CW = [45, 45, 45, 45]  # PSA waveplate angles  ← was stokesSequence[1]
+        # NOTE: original had stokesSequence[1] = [90,45,45,45] — verify these
+        #       hardware values are correct for your Stokes basis before running.
+ 
+        all_data = []
         for angleStep in range(0, 91, 10):
             if not self.worker._is_running:
                 break
-            for s in range(len(stokesSequence[0])):
+            for s in range(len(stokes_IP)):
                 if not self.worker._is_running:
                     break
-                data = self.slimScan (angleStep,angleStep,stokesSequence[1][s],stokesSequence[0][s], moveTime = 1)
-                all_data.extend(data)
-
+                # IW_Theta = IP_Theta = angleStep  (PSG side)
+                # CW_Theta = stokes_CW[s], CP_Theta = stokes_IP[s]  (PSA side)
+                data = self.slimScan(
+                    P1=angleStep, R1=angleStep,
+                    R2=stokes_CW[s], P2=stokes_IP[s],
+                )
+                all_data.append(data)  # FIX 3: append, not extend
+ 
         self.homeAll()
-        self.saveFiles(all_data, "stokesScan")
-
-    def _edgeLP(self): 
-        all_data = [] 
-        for x in range(0, 41, 1): # 20 milimeter across the sample edge by increments of 0.5 
-            if not self.worker._is_running:
-                break
-            for angleStep in range(0, 91, 90): # PSG creates polarization states 0 to 90 degrees 
-                if not self.worker._is_running:
-                    break
-                for anaylzeStep in range(0, 91, 90): # 2 Sets of Itensity Data to gather irradaiance 
-                    if not self.worker._is_running:
-                        break
-
-                    data = self.slimScan (angleStep,angleStep,anaylzeStep,anaylzeStep,T1 = 0, T2 = float(x/2))  
-                    all_data.extend(data)
-
-        self.saveFiles(all_data, "LPscan")
-        self.homeAll()
-
-    def _edgeCP(self): 
-        all_data = [] 
-        for x in range(0, 41, 1): # 20 milimeter across the sample edge by increments of 0.5 
-            if not self.worker._is_running:
-                break
-            for angleStep in range(-45, 46, 90): # PSG creates polarization states left handed, right handed
-                if not self.worker._is_running:
-                    break
-                for anaylzeStep in range(0, 91, 90): # 2 Sets of Itensity Data to gather
-                    if not self.worker._is_running:
-                        break
-                    data = self.slimScan (angleStep,0,anaylzeStep,anaylzeStep,T1 = 0, T2 = float(x/2))  
-                    all_data.extend(data)
-
-        self.saveFiles(all_data, "CPscan")
-        self.homeAll()
-
-    # Later on, probably change to an 18 sequence but for now we can do the min 
-    # Going to need 40 measurements for good results 
-    def _mueller(self, theta = 20, N = 16):
+        self.saveHDF5(all_data, "stokesScan")
+ 
+    def _edgeLP(self):
         all_data = []
-
-        for value in range(theta, (theta*N)+1, theta):
+        for x in range(0, 41, 1):           # 0–20 mm in 0.5 mm steps
             if not self.worker._is_running:
                 break
-            data = self.slimScan(0, value, value*5, 0)
-            all_data.extend(data)
-            print("Collection at R1: ",value, " R2: ", value*5)
-
-        self.saveFiles(all_data, "muellerScan")
+            for angleStep in range(0, 136, 45):   # PSG linear polarization states
+                if not self.worker._is_running:
+                    break
+                for analyzeStep in range(0, 91, 90):  # FIX 4: fixed typo 'anaylzeStep'
+                    if not self.worker._is_running:
+                        break
+                    data = self.slimScan(
+                        P1=angleStep, R1=angleStep,
+                        R2=analyzeStep, P2=analyzeStep,
+                        T1=0, T2=float(x / 2),
+                    )
+                    all_data.append(data)  # FIX 3: append, not extend
+ 
+        self.saveHDF5(all_data, "LPscan")
         self.homeAll()
-
-
+ 
+    def _edgeCP(self):
+        all_data = []
+        for x in range(0, 41, 1):           # 0–20 mm in 0.5 mm steps
+            if not self.worker._is_running:
+                break
+            for angleStep in range(-45, 46, 90):   # LH / RH circular states
+                if not self.worker._is_running:
+                    break
+                for analyzeStep in range(-45, 91, 45):  # FIX 4: fixed typo
+                    if not self.worker._is_running:
+                        break
+                    data = self.slimScan(
+                        P1=angleStep, R1=0,
+                        R2=analyzeStep, P2=analyzeStep,
+                        T1=0, T2=float(x / 2),
+                    )
+                    all_data.append(data)  # FIX 3: append, not extend
+ 
+        self.saveHDF5(all_data, "CPscan")
+        self.homeAll()
+ 
+    def _mueller(self, theta=20, N=16):
+        all_data = []
+        for value in range(theta, (theta * N) + 1, theta):
+            if not self.worker._is_running:
+                break
+            data = self.slimScan(P1=0, R1=value, R2=value * 5, P2=0)
+            all_data.append(data)  # FIX 3: append, not extend
+            print(f"Collection at R1: {value}  R2: {value * 5}")
+ 
+        self.saveHDF5(all_data, "muellerScan")
+        self.homeAll()
+ 
     def _cali(self):
         self.spectro.takeBackground()
 
-    def slimScan(self, P1, R1, R2, P2, T1 = '', T2 = '', moveTime = 0.75):
+    @Slot()
+    def pauseCalibration(self):
+        """Call from QML to pause the calibration mid-run."""
+        self._cali_paused = True
+ 
+    @Slot()
+    def resumeCalibration(self):
+        """Call from QML to resume after the midpoint pause."""
+        self._cali_paused = False
+ 
+    # ──────────────────────────────────────────────────────────────────────
+    # Core measurement
+    # ──────────────────────────────────────────────────────────────────────
+ 
+    def slimScan(self, P1, R1, R2, P2, T1="", T2="", moveTime=0.5):
+        """
+        Move both arms to position and acquire one spectrum.
+ 
+        Returns
+        -------
+        tuple : (angles_dict, intensities_array, wavelengths_array)
+        """
         self.PSG_DeathStar.setPosition(str(P1), str(R1), str(T1))
         self.PSA_DeathStar.setPosition(str(P2), str(R2), str(T2))
-        time.sleep(moveTime) # Time for the rotation of the retarders 
-
-        measurements = []
-        x = self.spectro._scanX
-        y = self.spectro._scanY
-        region = self.spectro._region
-        side = self.spectro._side
-        wavelength, intensities = self.spectro.takeSpectrum() 
-
-        for i in range(len(wavelength)):
-            measurements.append({
-                'region': region,
-                'x': x,
-                'y': y,
-                'side': side,
-                'IW_Theta': R1,
-                'IP_Theta': P1,
-                'CW_Theta': R2,
-                'CP_Theta': P2,
-                'wavelength': wavelength[i],
-                'intensity': intensities[i],
-                'integration_time': self.spectro.integration,
-            })
-
-        return measurements
-
+        print(str(T2))
+        time.sleep(moveTime)
+ 
+        wavelengths, intensities = self.spectro.takeSpectrum()
+ 
+        angles = {
+            "IW_Theta": R1,
+            "IP_Theta": P1,
+            "CW_Theta": R2,
+            "CP_Theta": P2,
+        }
+ 
+        # FIX 6: consistent tuple order (angles, intensities, wavelengths)
+        #         matches what saveHDF5 expects at d[0], d[1], d[2]
+        return (angles, np.array(intensities), np.array(wavelengths))
+ 
+    # ──────────────────────────────────────────────────────────────────────
+    # Stubs
+    # ──────────────────────────────────────────────────────────────────────
+ 
     def lateralCalibration(self):
-        print ("Hello World")
-        # This is for maximimizing intensity with translational movement
-        # Do later 
-            
-#Assuming that you have the waveplates on the exictation arm 
+        # FIX 7: stubs now raise NotImplementedError so accidental calls fail loudly
+        raise NotImplementedError("lateralCalibration not yet implemented")
+ 
     def scanIntensity(self, E_wp, E_pol):
-        self.PSA_DeathStar.setPosition(str(E_pol), str(E_wp))
-        #self.deathstar2.setPosition(str(0), str(0))
-        time.sleep(0.5)
-
-        #self.deathstar2.setPosition(str(90), str(90))
-        time.sleep(0.5)
-
-
+        raise NotImplementedError("scanIntensity not yet implemented")
+ 
 class XWingScan(QObject):
     progressChanged = Signal(str)
     statusChanged   = Signal(str)

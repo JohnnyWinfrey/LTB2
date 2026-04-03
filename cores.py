@@ -327,7 +327,9 @@ class DeathStar(QObject):
         self.ac.commandSend(f"G10 L20 P1 X{0} Y{0}")
         print("Set Home ->", self._thetaP, self._thetaW)
         self._thetaP = 0
-        self._thetaW = 0 
+        self._thetaW = 0
+        self.polarRotated.emit()
+        self.wavePlateRotated.emit() 
 
     # Returns z to home
     @Slot()
@@ -359,7 +361,7 @@ class SpectreCore(QObject):
 
     def __init__(self):
         super().__init__()
-        self.intTime = 10000000
+        self.intTime = 500000
         self.spec = Spectrometer.from_first_available()
         self.spec.integration_time_micros(self.intTime)
         self.specInfo = list_devices()[0]
@@ -401,7 +403,7 @@ class SpectreCore(QObject):
             pass
 
     def takeBackground(self):
-        #self.spec.integration_time_micros(self.intTime)
+        self.spec.integration_time_micros(self.intTime)
         self.spec.wavelengths()
         self.background = self.spec.intensities(correct_dark_counts=True)
         print("Background updated!")
