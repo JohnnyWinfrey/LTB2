@@ -16,9 +16,9 @@ Rectangle {
     
     function getBackend() {
         if (deathStarBackend === "PSG_Backend") {
-            return DeathStar1Backend
+            return PSG_Backend
         } else if (deathStarBackend === "PSA_Backend") {
-            return DeathStar2Backend
+            return PSA_Backend
         } else {
             return DeathStarBackend
         }
