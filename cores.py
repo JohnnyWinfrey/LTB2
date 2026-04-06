@@ -330,7 +330,7 @@ class SpectreCore(QObject):
 
     def __init__(self):
         super().__init__()
-        self.intTime = 500000
+        self.intTime = 10000000
         self.spec = Spectrometer.from_first_available()
         self.spec.integration_time_micros(self.intTime)
         self.specInfo = list_devices()[0]
@@ -376,7 +376,11 @@ class SpectreCore(QObject):
         except ValueError:
             pass
 
+    # Note: The way spectrometer works is that it seems to continiously load data. When int time change, need to take a measurement to 'clear' it from old one
     def takeBackground(self):
+        self.spec.intensities
+        self.spec.wavelengths()
+
         self.spec.wavelengths()
         self.background = self.spec.intensities(correct_dark_counts=True)
         sorted_bg = sorted(self.background, reverse=True)
