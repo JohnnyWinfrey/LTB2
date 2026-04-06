@@ -98,7 +98,7 @@ ApplicationWindow {
                 
                 Rectangle {
                     width: 200
-                    height: 600
+                    height: 500
                     color: "#313131"
                     border.width: 3
                     
@@ -106,7 +106,7 @@ ApplicationWindow {
                         x: 8
                         y: 8
                         width: 184
-                        height: 584
+                        height: 484
                         color: "#676767"
                         radius: 10
                         border.width: 3
