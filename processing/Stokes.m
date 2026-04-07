@@ -4,9 +4,9 @@ close all;
 
 Norm = 1;   Latex = 1;
 
-sampleName = "RG103d'";
-sampleReg = 'Center';
-Side = "Y";
+sampleName = "";
+sampleReg = '';
+Side = "";
 
 waveMin = 550;
 waveMax = 951;
@@ -15,8 +15,8 @@ numIncident = 10;
 incidentSpacing = 10;
 startIncident = 0;
 
-saveFolderST = mkdir('Stokes (retake)');
-saveFolderpathST = fullfile('Stokes (retake)');
+saveFolderST = mkdir('Stokes');
+saveFolderpathST = fullfile('Stokes');
 
 if Latex == 1
     saveFolderLatex = mkdir('Latex');
