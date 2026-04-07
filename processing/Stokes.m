@@ -2,33 +2,24 @@ clc;
 clear all;
 close all;
 
-Norm = 1;   Latex = 0;
+Norm = 1;   Latex = 1;
 
-sampleName = "RG092c";
-sampleReg = 'A';
-Side = "y";
+sampleName = "RG103d'";
+sampleReg = 'Center';
+Side = "Y";
 
 waveMin = 550;
 waveMax = 951;
 
-startLineST = 145;
-endLineST = 806;
-
-numSteps = 41;
-stepSize = 0.5;
-startPos = 0;
 numIncident = 10;
 incidentSpacing = 10;
 startIncident = 0;
-
-QEPro_inc = 0.7320;
-Flame_inc = 6;
 
 saveFolderST = mkdir('Stokes (retake)');
 saveFolderpathST = fullfile('Stokes (retake)');
 
 if Latex == 1
-    saveFolderLatex = mdkir('Latex');
+    saveFolderLatex = mkdir('Latex');
     saveFolderpathLatex = fullfile('Latex');
 end
 
@@ -56,72 +47,61 @@ end
 dataFileST = append(sampleName, '_Reg', sampleReg, '_', Side, 'Side');
 sampleTitleST = append(sampleName, ' Region ', sampleReg, ' ', pminus, upper(Side), ' Side');
 
-h5dataPath = append('Stokes (retake)/', Side, '/', sampleName, '_Region', sampleReg, '_', Side, '_stokesScan.h5');
-IPValues = unique(h5read(h5dataPath, '/IP_Theta'));
-IWValues = unique(h5read(h5dataPath, '/IW_Theta'));
-CWValues = unique(h5read(h5dataPath, '/CW_Theta'));
-CPValues = unique(h5read(h5dataPath, '/CP_Theta'));
-waveValues = unique(h5read(h5dataPath, '/wavelength'));
-intensityValues = h5read(h5dataPath, '/intensity');
-wavelengthValues = h5read(h5dataPath, '/wavelength');
+h5dataPath = append(saveFolderpathST, '/', Side, '/', sampleName, '_Region', sampleReg, '_', Side, '_stokesScan.h5');
+info = h5info(h5dataPath);
+dataSet = {info.Datasets.Name};
 
-waveMask = waveValues >= waveMin & waveValues <= waveMax;
-waveValues = waveValues(waveMask);
-
-for n = 1:length(IPValues)
-    ip(n) = IPValues(n);
-    for m = 1:length(CWValues)
-        cw(m) = CWValues(m);
-        for k = 1:length(CPValues)
-            cp(k) = CPValues(k);
-
-            g = 4*(n-1)+1+(m-1)+(k-1);
-
-            data(n,m,k).IP_Theta = ip(n);
-            data(n,m,k).CW_Theta = cw(m);
-            data(n,m,k).CP_Theta = cp(k);
-            data(n,m,k).wavelength = wavelengthValues;
-            data(n,m,k).intensity = intensityValues(:,g);
-
-        end
-    end
+for r = 1:length(dataSet)
+    data{:,r} = h5read(h5dataPath, append('/', dataSet{r}));
 end
 
-for IPAngles = 1:length(IPValues)
-    for CWAngles = 1:length(CWValues)
-        for CPAngles = 1:length(CPValues)
+IPValues = data{:,3};
+CWValues = data{:,2};
+CPValues = data{:,1};
+wavelengthValues = data{:,6};
+intensityValues = data{:,5};
 
-            dataST(IPAngles,CWAngles,CPAngles).IP_Theta = data(IPAngles,CWAngles,CPAngles).IP_Theta;
-            dataST(IPAngles,CWAngles,CPAngles).CW_Theta = data(IPAngles,CWAngles,CPAngles).CW_Theta;
-            dataST(IPAngles,CWAngles,CPAngles).CP_Theta = data(IPAngles,CWAngles,CPAngles).CP_Theta;
-            dataST(IPAngles,CWAngles,CPAngles).wavelength = data(IPAngles,CWAngles,CPAngles).wavelength;
-            dataST(IPAngles,CWAngles,CPAngles).intensity = data(IPAngles,CWAngles,CPAngles).intensity;
-            
-            I(IPAngles,CWAngles,CPAngles,:) = smooth(dataST(IPAngles,CWAngles,CPAngles).intensity(waveMask), 21);
-        end
-    end
-    
-    S0(IPAngles,:) = I(IPAngles,2,1,:) + I(IPAngles,1,2,:);
-    S1(IPAngles,:) = 2*(I(IPAngles,1,1,:) - 0.5*(I(IPAngles,2,1,:) + I(IPAngles,1,2,:)));
-    S2(IPAngles,:) = 2*(I(IPAngles,2,2,:) - 0.5*(I(IPAngles,2,1,:) + I(IPAngles,1,2,:)));
-    S3(IPAngles,:) = 2*(I(IPAngles,1,2,:) - 0.5*(I(IPAngles,2,1,:) + I(IPAngles,1,2,:)));
-    
-    S0Norm(IPAngles,:) = S0(IPAngles,:)./S0(IPAngles,:);
-    S1Norm(IPAngles,:) = S1(IPAngles,:)./S0(IPAngles,:);
-    S2Norm(IPAngles,:) = S2(IPAngles,:)./S0(IPAngles,:);
-    S3Norm(IPAngles,:) = S3(IPAngles,:)./S0(IPAngles,:);
+waveMask = wavelengthValues >= waveMin & wavelengthValues <= waveMax;
+waveValues = wavelengthValues(waveMask);
 
-    if Norm == 1
-        S0SourceNorm(IPAngles,:) = S0(IPAngles,:)./(Norm_VIS');
-        S1SourceNorm(IPAngles,:) = S1(IPAngles,:)./(Norm_VIS');
-        S2SourceNorm(IPAngles,:) = S2(IPAngles,:)./(Norm_VIS');
-        S3SourceNorm(IPAngles,:) = S3(IPAngles,:)./(Norm_VIS');
-    end
+Mask00 = CWValues == 0 & CPValues == 0;
+Mask045 = CWValues == 0 & CPValues == 45;
+Mask4545 = CWValues == 45 & CPValues == 45;
+Mask450 = CWValues == 45 & CPValues == 0;
+
+I00 = data{:,5}(:,Mask00);
+%I00 = smooth(I00,21);
+I045 = data{:,5}(:,Mask045);
+%I045 = smooth(I045,21);
+I4545 = data{:,5}(:,Mask4545);
+%I4545 = smooth(I4545,21);
+I450 = data{:,5}(:,Mask450);
+%I450 = smooth(I450,21);
+
+S0 = (I450 + I045).';
+S0 = S0(:,find(waveMask == 1, 1, "first"):find(waveMask == 1, 1, "last"));
+S1 = (2*(I00-0.5*(I450+I045))).';
+S1 = S1(:,find(waveMask == 1, 1, "first"):find(waveMask == 1, 1, "last"));
+S2 = (2*(I4545-0.5*(I450+I045))).';
+S2 = S2(:,find(waveMask == 1, 1, "first"):find(waveMask == 1, 1, "last"));
+S3 = (2*(I045-0.5*(I450+I045))).';
+S3 = S3(:,find(waveMask == 1, 1, "first"):find(waveMask == 1, 1, "last"));
+  
+S0Norm = S0./S0;
+S1Norm = S1./S0;
+S2Norm = S2./S0;
+S3Norm = S3./S0;
+
+if Norm == 1
+    S0SourceNorm = S0./(Norm_VIS');
+    S1SourceNorm = S1./(Norm_VIS');
+    S2SourceNorm = S2./(Norm_VIS');
+    S3SourceNorm = S3./(Norm_VIS');
 end
 
-SDOP(:,:) = sqrt((reshape(S1(:,:),numIncident,[]).^2 + reshape(S2(:,:),numIncident,[]).^2 + reshape(S3(:,:),numIncident,[]).^2)) ./ reshape(S0(:,:),numIncident,[]);
-SDOLP(:,:) = sqrt((reshape(S1(:,:),numIncident,[]).^2 + reshape(S2(:,:),numIncident,[]).^2)) ./ reshape(S0(:,:),numIncident,[]);
-SDOCP(:,:) = sqrt(reshape(S3(:,:),numIncident,[]).^2) ./ reshape(S0(:,:),numIncident,[]);
+SDOP = sqrt((reshape(S1,numIncident,[]).^2 + reshape(S2,numIncident,[]).^2 + reshape(S3,numIncident,[]).^2)) ./ reshape(S0,numIncident,[]);
+SDOLP = sqrt((reshape(S1,numIncident,[]).^2 + reshape(S2,numIncident,[]).^2)) ./ reshape(S0,numIncident,[]);
+SDOCP = sqrt(reshape(S3,numIncident,[]).^2) ./ reshape(S0,numIncident,[]);
 
 cmap_ST = jet;
 for AnglesIP = 1:192                     
@@ -129,18 +109,18 @@ for AnglesIP = 1:192
 end 
 
 S0Normcol = [-1 1];
-S0col = [-0.75*max(S0, [], 'all') 0.75*max(S0, [], 'all')];
-S0SourceNormcol = [-0.75*max(S0SourceNorm, [], 'all') 0.75*max(S0SourceNorm, [], 'all')];
+S0col = [-max(S0, [], 'all') max(S0, [], 'all')];
+S0SourceNormcol = [-max(S0SourceNorm, [], 'all') max(S0SourceNorm, [], 'all')];
 DOPcol = [0 1];
 
 status = fclose('all');
 %% SO Norm
 f1 = figure(1);
-f1.Position = [200 -25 400 800];
+f1.Position = [200 0 500 800];
 f1.Resize = 'off';
 
 subplot(4,1,1);
-surf(waveValues,IPValues,reshape(S0Norm(:,:),numIncident,[]));
+surf(waveValues,unique(IPValues),reshape(S0Norm,numIncident,[]));
 shading interp
 colormap(adj_cmap_ST)
 title(append(sampleTitleST, ' S0 Normalized', newline,'S0'));
@@ -149,11 +129,11 @@ view(0,90)
 c = colorbar;
 c.Ruler.Exponent = 0;
 clim(S0Normcol)
-xlim([min(min(waveMin)) max(max(waveMax))]);
+xlim([waveMin waveMax]);
 ylim([0 90]);
 
 subplot(4,1,2);
-surf(waveValues,IPValues,reshape(S1Norm(:,:),numIncident,[]));
+surf(waveValues,unique(IPValues),reshape(S1Norm,numIncident,[]));
 shading interp
 colormap(adj_cmap_ST)
 title('S1');
@@ -161,11 +141,11 @@ view(0,90)
 c = colorbar;
 c.Ruler.Exponent = 0;
 clim(S0Normcol)
-xlim([min(min(waveMin)) max(max(waveMax))]);
+xlim([waveMin waveMax]);
 ylim([0 90]);
 
 subplot(4,1,3);
-surf(waveValues,IPValues,reshape(S2Norm(:,:),numIncident,[]));
+surf(waveValues,unique(IPValues),reshape(S2Norm,numIncident,[]));
 shading interp
 colormap(adj_cmap_ST)
 title('S2');
@@ -173,11 +153,11 @@ view(0,90)
 c = colorbar;
 c.Ruler.Exponent = 0;
 clim(S0Normcol)
-xlim([min(min(waveMin)) max(max(waveMax))]);
+xlim([waveMin waveMax]);
 ylim([0 90]);
 
 subplot(4,1,4);
-surf(waveValues,IPValues,reshape(S3Norm(:,:),numIncident,[]));
+surf(waveValues,unique(IPValues),reshape(S3Norm,numIncident,[]));
 shading interp
 colormap(adj_cmap_ST)
 title('S3');
@@ -186,7 +166,7 @@ view(0,90)
 c = colorbar;
 c.Ruler.Exponent = 0;
 clim(S0Normcol)
-xlim([min(min(waveMin)) max(max(waveMax))]);
+xlim([waveMin waveMax]);
 ylim([0 90]);
 
 set(f1, 'Name', sampleTitleST + " StokesS0Norm", 'NumberTitle', 'off');
@@ -197,11 +177,11 @@ end
 
 %% Stokes Vector
 f2 = figure(2);
-f2.Position = [200 -25 400 800];
+f2.Position = [200 0 500 800];
 f2.Resize = 'off';
 
 subplot(4,1,1);
-surf(waveValues,IPValues,reshape(S0(:,:),numIncident,[]));
+surf(waveValues,unique(IPValues),reshape(S0,numIncident,[]));
 shading interp
 colormap jet
 title(append(sampleTitleST, ' Stokes Vector', newline,'S0'));
@@ -210,11 +190,11 @@ view(0,90)
 c = colorbar;
 c.Ruler.Exponent = 0;
 clim(S0col)
-xlim([min(min(waveMin)) max(max(waveMax))]);
+xlim([waveMin waveMax]);
 ylim([0 90]);
 
 subplot(4,1,2);
-surf(waveValues,IPValues,reshape(S1(:,:),numIncident,[]));
+surf(waveValues,unique(IPValues),reshape(S1,numIncident,[]));
 shading interp
 colormap(adj_cmap_ST)
 title('S1');
@@ -222,11 +202,11 @@ view(0,90)
 c = colorbar;
 c.Ruler.Exponent = 0;
 clim(S0col)
-xlim([min(min(waveMin)) max(max(waveMax))]);
+xlim([waveMin waveMax]);
 ylim([0 90]);
 
 subplot(4,1,3);
-surf(waveValues,IPValues,reshape(S2(:,:),numIncident,[]));
+surf(waveValues,unique(IPValues),reshape(S2,numIncident,[]));
 shading interp
 colormap(adj_cmap_ST)
 title('S2');
@@ -234,11 +214,11 @@ view(0,90)
 c = colorbar;
 c.Ruler.Exponent = 0;
 clim(S0col)
-xlim([min(min(waveMin)) max(max(waveMax))]);
+xlim([waveMin waveMax]);
 ylim([0 90]);
 
 subplot(4,1,4);
-surf(waveValues,IPValues,reshape(S3(:,:),numIncident,[]));
+surf(waveValues,unique(IPValues),reshape(S3,numIncident,[]));
 shading interp
 colormap(adj_cmap_ST)
 title('S3');
@@ -247,7 +227,7 @@ view(0,90)
 c = colorbar;
 c.Ruler.Exponent = 0;
 clim(S0col)
-xlim([min(min(waveMin)) max(max(waveMax))]);
+xlim([waveMin waveMax]);
 ylim([0 90]);
 
 set(f2, 'Name', sampleTitleST + " StokesVector", 'NumberTitle', 'off');
@@ -259,11 +239,11 @@ end
 %% Source Norm
 if Norm == 1
     f3 = figure(3);
-    f3.Position = [200,-25,400,800];
+    f3.Position = [200 0 500 800];
     f3.Resize = 'off';
 
     subplot(4,1,1);
-    surf(waveValues,IPValues,reshape(S0SourceNorm(:,:),numIncident,[]));
+    surf(waveValues,unique(IPValues),reshape(S0SourceNorm,numIncident,[]));
     shading interp
     colormap(adj_cmap_ST)
     title(append(sampleTitleST, ' Source Normalized', newline,'S0'));
@@ -272,11 +252,11 @@ if Norm == 1
     c = colorbar;
     c.Ruler.Exponent = 0;
     clim([0 S0SourceNormcol(2)])
-    xlim([min(min(waveMin)) max(max(waveMax))]);
+    xlim([waveMin waveMax]);
     ylim([0 90]);
     
     subplot(4,1,2);
-    surf(waveValues,IPValues,reshape(S1SourceNorm(:,:),numIncident,[]));
+    surf(waveValues,unique(IPValues),reshape(S1SourceNorm,numIncident,[]));
     shading interp
     colormap(adj_cmap_ST)
     title('S1');
@@ -284,11 +264,11 @@ if Norm == 1
     c = colorbar;
     c.Ruler.Exponent = 0;
     clim(S0SourceNormcol)
-    xlim([min(min(waveMin)) max(max(waveMax))]);
+    xlim([waveMin waveMax]);
     ylim([0 90]);
     
     subplot(4,1,3);
-    surf(waveValues,IPValues,reshape(S2SourceNorm(:,:),numIncident,[]));
+    surf(waveValues,unique(IPValues),reshape(S2SourceNorm,numIncident,[]));
     shading interp
     colormap(adj_cmap_ST)
     title('S2');
@@ -296,11 +276,11 @@ if Norm == 1
     c = colorbar;
     c.Ruler.Exponent = 0;
     clim(S0SourceNormcol)
-    xlim([min(min(waveMin)) max(max(waveMax))]);
+    xlim([waveMin waveMax]);
     ylim([0 90]);
 
     subplot(4,1,4);
-    surf(waveValues,IPValues,reshape(S3SourceNorm(:,:),numIncident,[]));
+    surf(waveValues,unique(IPValues),reshape(S3SourceNorm,numIncident,[]));
     shading interp
     colormap(adj_cmap_ST)
     title('S3');
@@ -309,7 +289,7 @@ if Norm == 1
     c = colorbar;
     c.Ruler.Exponent = 0;
     clim(S0SourceNormcol)
-    xlim([min(min(waveMin)) max(max(waveMax))]);
+    xlim([waveMin waveMax]);
     ylim([0 90]);
     
     set(f3, 'Name', sampleTitleST + " StokesVectorSourceNorm", 'NumberTitle', 'off');
@@ -322,11 +302,11 @@ end
 
 %% DOP
 f4 = figure(4);
-f4.Position = [200 -25 400 800];
+f4.Position = [200 0 500 800];
 f4.Resize = 'off';
 
 subplot(3,1,1);
-surf(waveValues,IPValues,SDOP(:,:));
+surf(waveValues,unique(IPValues),SDOP);
 shading interp
 colormap(adj_cmap_ST)
 title(append(sampleTitleST, ' Degree of Polarization', newline,'DOP'));
@@ -335,11 +315,11 @@ view(0,90)
 c = colorbar;
 c.Ruler.Exponent = 0;
 clim(DOPcol)
-xlim([min(min(waveMin)) max(max(waveMax))]);
+xlim([waveMin waveMax]);
 ylim([0 90]);
 
 subplot(3,1,2);
-surf(waveValues, IPValues, SDOLP(:,:));
+surf(waveValues, unique(IPValues), SDOLP);
 shading interp
 colormap(adj_cmap_ST)
 title(append('DOLP'));
@@ -347,11 +327,11 @@ view(0,90)
 c = colorbar;
 c.Ruler.Exponent = 0;
 clim(DOPcol)
-xlim([min(min(waveMin)) max(max(waveMax))]);
+xlim([waveMin waveMax]);
 ylim([0 90]);
 
 subplot(3,1,3);
-surf(waveValues, IPValues, SDOCP(:,:));
+surf(waveValues, unique(IPValues), SDOCP);
 shading interp
 colormap(adj_cmap_ST)
 title(append('DOCP'));
@@ -360,7 +340,7 @@ view(0,90)
 c = colorbar;
 c.Ruler.Exponent = 0;
 clim(DOPcol)
-xlim([min(min(waveMin)) max(max(waveMax))]);
+xlim([waveMin waveMax]);
 ylim([0 90]);
 
 set(f4, 'Name', sampleTitleST + " DOP", 'NumberTitle', 'off');
@@ -368,3 +348,5 @@ savefig(f4, fullfile(pwd, saveFolderpathST, sampleTitleST + " DOP.fig"));
 if Latex == 1
     exportgraphics(f4, fullfile(pwd, saveFolderpathLatex, sampleTitleST + " DOP.png"), 'Resolution', 300);
 end
+
+close('all');
