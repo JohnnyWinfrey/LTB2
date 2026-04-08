@@ -684,21 +684,25 @@ class XWingScan(QObject):
     progressChanged = Signal(str)
     statusChanged   = Signal(str)
 
-    def __init__(self, xwing, spectro):
+    def __init__(self, xwing, cornerstone, pmt):
         super().__init__()
-        self.xwing   = xwing
-        self.spectro = spectro
-        self.worker  = None
-        self._sample_name      = "sample"
-        self._nx               = 5
-        self._ny               = 5
-        self._spacing          = 0.5     # mm, fixed
-        self._integration_time = 500000  # µs = 500 ms
+        self.xwing       = xwing
+        self.cornerstone = cornerstone
+        self.pmt         = pmt
+        self.digi        = NIScopeClient()
+        self.worker      = None
+        self._sample_name = "sample"
+        self._nx          = 5
+        self._ny          = 5
+        self._spacing     = 0.5   # mm
+        self.gain         = 0
+        self.pmt.changeGain(self.gain)
         print("XWingScan Automation Ready")
 
     @Slot(str)
     def setSampleName(self, value):
         self._sample_name = value.strip()
+        print(f"Sample name set to: {self._sample_name}")
 
     @Slot(str)
     def setNx(self, value):
@@ -715,10 +719,9 @@ class XWingScan(QObject):
             pass
 
     @Slot(str)
-    def setIntegrationTime(self, value):
+    def setSpacing(self, value):
         try:
-            self._integration_time = int(value)
-            self.spectro.setIntegration(value)
+            self._spacing = float(value)
         except ValueError:
             pass
 
@@ -736,71 +739,113 @@ class XWingScan(QObject):
             self.worker.stop()
         self.statusChanged.emit("Stopped.")
 
+    def _saveHDF5(self, all_x, all_y, wavelengths, all_voltages):
+        timestamp  = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+        name       = re.sub(r'[^\w\-]', '_', self._sample_name) or "sample"
+        output_dir = os.path.join("data", f"{name}_{timestamp}")
+        os.makedirs(output_dir, exist_ok=True)
+        h5_path    = os.path.join(output_dir, f"{name}_xwing_scan.h5")
+
+        voltage_matrix = np.array(all_voltages)   # (N_pts, N_wavelengths)
+
+        with h5py.File(h5_path, "w") as f:
+            f.attrs["sample_name"]      = self._sample_name
+            f.attrs["nx"]               = self._nx
+            f.attrs["ny"]               = self._ny
+            f.attrs["spacing_mm"]       = self._spacing
+            f.attrs["gain"]             = self.gain
+            f.attrs["start_wavelength"] = self.cornerstone.startWavelength
+            f.attrs["end_wavelength"]   = self.cornerstone.endWavelength
+            f.attrs["num_steps"]        = self.cornerstone.numSteps
+
+            f.create_dataset("x",          data=np.array(all_x))
+            f.create_dataset("y",          data=np.array(all_y))
+            f.create_dataset("wavelength", data=np.array(wavelengths))
+            f.create_dataset(
+                "voltage", data=voltage_matrix,
+                compression="gzip", compression_opts=4,
+            )
+
+        print(f"Saved {len(all_x)} points → {h5_path}")
+
     def _scan(self):
         origin_x = self.xwing._x
         origin_y = self.xwing._y
 
-        timestamp  = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
-        output_dir = os.path.join("data", timestamp)
-        os.makedirs(output_dir, exist_ok=True)
-
-        safe_name    = re.sub(r'[^\w\-]', '_', self._sample_name) or "sample"
-        csv_filename = os.path.join(output_dir, f"{safe_name}_xwing_scan.csv")
-
-        self.spectro.setIntegration(str(self._integration_time))
-        self.statusChanged.emit("Running...")
-        print(f"XWing scan: {self._nx}x{self._ny} pts, spacing={self._spacing}mm, "
-              f"integration={self._integration_time}µs")
-        print(f"Saving to: {csv_filename}")
+        step_size   = (self.cornerstone.endWavelength - self.cornerstone.startWavelength) / self.cornerstone.numSteps
+        wavelengths = [self.cornerstone.startWavelength + j * step_size
+                       for j in range(self.cornerstone.numSteps)]
 
         total_points = self._nx * self._ny
         point_num    = 0
+        all_x        = []
+        all_y        = []
+        all_voltages = []
 
-        with open(csv_filename, 'w', newline='') as f:
-            writer = csv.DictWriter(
-                f, fieldnames=['sample_name', 'x', 'y', 'wavelength', 'intensity'])
-            writer.writeheader()
+        self.cornerstone.mono.open_shutter()
+        self.statusChanged.emit("Running...")
+        print(f"XWing scan: {self._nx}x{self._ny} pts, spacing={self._spacing}mm, "
+              f"λ {self.cornerstone.startWavelength}–{self.cornerstone.endWavelength}nm "
+              f"({self.cornerstone.numSteps} steps)")
 
-            for iy in range(self._ny):
+        for iy in range(self._ny):
+            if not self.worker._is_running:
+                break
+            # Boustrophedon (snake) scan to minimise stage travel
+            ix_range = range(self._nx) if iy % 2 == 0 else range(self._nx - 1, -1, -1)
+
+            for ix in ix_range:
                 if not self.worker._is_running:
                     break
-                # Boustrophedon (snake) scan to minimise stage travel
-                ix_range = range(self._nx) if iy % 2 == 0 else range(self._nx - 1, -1, -1)
 
-                for ix in ix_range:
+                target_x = origin_x + ix * self._spacing
+                target_y = origin_y + iy * self._spacing
+
+                self.xwing.ac.commandSend(
+                    f"G1 X{target_x:.4f} Y{target_y:.4f} F{self.xwing.rate}")
+                time.sleep(1.5)
+
+                self.xwing._x = target_x
+                self.xwing._y = target_y
+                self.xwing.xChanged.emit()
+                self.xwing.yChanged.emit()
+
+                # Sweep wavelengths at this spatial position
+                point_voltages = []
+                for wavelength in wavelengths:
                     if not self.worker._is_running:
                         break
 
-                    target_x = origin_x + ix * self._spacing
-                    target_y = origin_y + iy * self._spacing
+                    self.cornerstone.mono.goto(wavelength)
+                    time.sleep(2)
 
-                    self.xwing.ac.commandSend(
-                        f"G1 X{target_x:.4f} Y{target_y:.4f} F{self.xwing.rate}")
-                    time.sleep(1.5)
+                    d1 = self.digi.record()
+                    d2 = self.digi.record()
+                    d3 = self.digi.record()
+                    d4 = self.digi.record()
+                    voltage = (d1 + d2 + d3 + d4) / 4
 
-                    # Update UI position readouts
-                    self.xwing._x = target_x
-                    self.xwing._y = target_y
-                    self.xwing.xChanged.emit()
-                    self.xwing.yChanged.emit()
+                    point_voltages.append(voltage)
 
-                    wavelengths, intensities = self.spectro.takeSpectrum()
+                    self.cornerstone.currentWavelength = wavelength
+                    self.cornerstone.waveChanged.emit()
 
-                    for i in range(len(wavelengths)):
-                        writer.writerow({
-                            'sample_name': self._sample_name,
-                            'x':           round(target_x, 4),
-                            'y':           round(target_y, 4),
-                            'wavelength':  wavelengths[i],
-                            'intensity':   intensities[i],
-                        })
-                    f.flush()
+                    print(f"  Pt {point_num+1}/{total_points} "
+                          f"X={target_x:.3f} Y={target_y:.3f} "
+                          f"λ={wavelength:.2f}nm V={voltage:.4f}V")
 
-                    point_num += 1
-                    self.progressChanged.emit(f"Point {point_num}/{total_points}")
-                    print(f"  Point {point_num}/{total_points}: "
-                          f"X={target_x:.3f}, Y={target_y:.3f}")
+                all_x.append(round(target_x, 4))
+                all_y.append(round(target_y, 4))
+                all_voltages.append(point_voltages)
+
+                point_num += 1
+                self.progressChanged.emit(f"Point {point_num}/{total_points}")
+
+        self.cornerstone.mono.close_shutter()
+
+        if all_voltages:
+            self._saveHDF5(all_x, all_y, wavelengths, all_voltages)
 
         status = "Done." if self.worker._is_running else "Stopped."
-        self.statusChanged.emit(f"{status} Saved: {csv_filename}")
+        self.statusChanged.emit(status)
         print(f"Scan complete. {point_num} points measured.")
