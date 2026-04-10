@@ -464,13 +464,15 @@ class SLIM(QObject):
     @Property(str, notify=progressChanged)
     def timeRemaining(self):
         if self._currentStep == 0 or self._startTime is None:
-            return "--:--"
+            return ""
         elapsed = time.time() - self._startTime
         avg_per_step = elapsed / self._currentStep
         remaining = avg_per_step * (self._totalSteps - self._currentStep)
-        mins = int(remaining // 60)
-        secs = int(remaining % 60)
-        return f"{mins:02d}:{secs:02d}"
+        mins = int(remaining // 60) + 1
+        if mins <= 1:
+            return "(<1 min)"
+        else:
+            return f"(~{mins} mins)"
 
     def _initProgress(self, totalSteps):
         self._totalSteps = totalSteps

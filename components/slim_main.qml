@@ -7,7 +7,7 @@ ApplicationWindow {
     width: 600
     height: 900
     title: "SLIM Automation"
-    
+
     Column {
         anchors.fill: parent
         spacing: 0
@@ -223,30 +223,6 @@ ApplicationWindow {
                                     border.width: 2
                                 }
                             }
-                            // Progress bar
-                            Rectangle {
-                                anchors.horizontalCenter: parent.horizontalCenter
-                                width: 150
-                                height: 20
-                                color: "#000000"
-                                border.width: 1
-                                radius: 4
-
-                                Rectangle {
-                                    width: parent.width * SLIMBackend.progress
-                                    height: parent.height
-                                    color: "#43ac33"
-                                    radius: 4
-                                }
-
-                                Text {
-                                    anchors.centerIn: parent
-                                    text: Math.round(SLIMBackend.progress * 100) + "%  (" + SLIMBackend.timeRemaining + ")"
-                                    font.pixelSize: 10
-                                    font.family: "OCR A"
-                                    color: "#ffffff"
-                                }
-                            }
                         }
                     }
                 }
@@ -293,19 +269,28 @@ ApplicationWindow {
             }
         }
         
-        // Status bar
+        // Status / Progress bar
         Rectangle {
             width: 600
             height: 50
             color: "#2d2d2d"
             border.width: 2
-            
+
+            // Progress fill
+            Rectangle {
+                width: parent.width * SLIMBackend.progress
+                height: parent.height
+                color: "#43ac33"
+            }
+
             Text {
                 anchors.centerIn: parent
-                text: "Ready"
+                text: SLIMBackend.progress > 0
+                    ? Math.round(SLIMBackend.progress * 100) + "%  " + SLIMBackend.timeRemaining
+                    : "Ready"
                 font.pixelSize: 14
                 font.family: "Courier"
-                color: "#43ac33"
+                color: SLIMBackend.progress > 0 ? "#ffffff" : "#43ac33"
             }
         }
     }
