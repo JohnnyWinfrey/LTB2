@@ -223,6 +223,30 @@ ApplicationWindow {
                                     border.width: 2
                                 }
                             }
+                            // Progress bar
+                            Rectangle {
+                                anchors.horizontalCenter: parent.horizontalCenter
+                                width: 150
+                                height: 20
+                                color: "#000000"
+                                border.width: 1
+                                radius: 4
+
+                                Rectangle {
+                                    width: parent.width * SLIMBackend.progress
+                                    height: parent.height
+                                    color: "#43ac33"
+                                    radius: 4
+                                }
+
+                                Text {
+                                    anchors.centerIn: parent
+                                    text: Math.round(SLIMBackend.progress * 100) + "%  (" + SLIMBackend.timeRemaining + ")"
+                                    font.pixelSize: 10
+                                    font.family: "OCR A"
+                                    color: "#ffffff"
+                                }
+                            }
                         }
                     }
                 }

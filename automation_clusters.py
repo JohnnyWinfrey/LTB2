@@ -434,14 +434,59 @@ class HyperSpectralSingleFluor(QObject):
         print(f"Scan complete! Data saved to: {csv_filename}")
 
 class SLIM(QObject):
+    progressChanged = Signal()
+
     def __init__(self, spectrometerCore, PSG, PSA):
         super().__init__()
         self.PSG_DeathStar = PSG
         self.PSA_DeathStar = PSA
         self.spectro = spectrometerCore
         self.worker = None
- 
+
+        # Progress tracking
+        self._totalSteps = 0
+        self._currentStep = 0
+        self._startTime = None
+
         print("SLIM AUTOMATION READY")
+
+    # ──────────────────────────────────────────────────────────────────────
+    # Timer/Loading Bar Methods
+    # ──────────────────────────────────────────────────────────────────────
+
+    @Property(float, notify=progressChanged)
+    def progress(self):
+        """0.0 to 1.0"""
+        if self._totalSteps == 0:
+            return 0.0
+        return self._currentStep / self._totalSteps
+
+    @Property(str, notify=progressChanged)
+    def timeRemaining(self):
+        if self._currentStep == 0 or self._startTime is None:
+            return "--:--"
+        elapsed = time.time() - self._startTime
+        avg_per_step = elapsed / self._currentStep
+        remaining = avg_per_step * (self._totalSteps - self._currentStep)
+        mins = int(remaining // 60)
+        secs = int(remaining % 60)
+        return f"{mins:02d}:{secs:02d}"
+
+    def _initProgress(self, totalSteps):
+        self._totalSteps = totalSteps
+        self._currentStep = 0
+        self._startTime = time.time()
+        self.progressChanged.emit()
+
+    def _stepProgress(self):
+        self._currentStep += 1
+        self.progressChanged.emit()
+
+    def _resetProgress(self):
+        self._totalSteps = 0
+        self._currentStep = 0
+        self._startTime = None
+        self.progressChanged.emit()
  
     # ──────────────────────────────────────────────────────────────────────
     # Threading / dispatch
@@ -554,6 +599,9 @@ class SLIM(QObject):
         # NOTE: original had stokesSequence[1] = [90,45,45,45] — verify these
         #       hardware values are correct for your Stokes basis before running.
  
+        num_angles = len(range(0, 91, 10))  # 10
+        self._initProgress(num_angles * len(stokes_IP))  # 10 * 4 = 40
+
         all_data = []
         for angleStep in range(0, 91, 10):
             if not self.worker._is_running:
@@ -568,11 +616,18 @@ class SLIM(QObject):
                     R2=stokes_CW[s], P2=stokes_IP[s],
                 ) 
                 all_data.append(data)  # FIX 3: append, not extend
+                self._stepProgress()
  
         self.homeAll()
         self.saveHDF5(all_data, "stokesScan")
+        self._resetProgress()
  
     def _edgeLP(self):
+        num_x = len(range(0, 41, 1))          # 41
+        num_angle = len(range(0, 136, 45))     # 3
+        num_analyze = len(range(0, 91, 90))    # 2
+        self._initProgress(num_x * num_angle * num_analyze)  # 246 measurements
+
         all_data = []
         for x in range(0, 41, 1):           # 0–20 mm in 0.5 mm steps
             if not self.worker._is_running:
@@ -589,11 +644,18 @@ class SLIM(QObject):
                         T1=0, T2=float(x / 2),
                     )
                     all_data.append(data)  # FIX 3: append, not extend
+                    self._stepProgress()
  
         self.saveHDF5(all_data, "LPscan")
         self.homeAll()
+        self._resetProgress()
  
     def _edgeCP(self):
+        num_x = len(range(0, 41, 1))            # 41
+        num_angle = len(range(-45, 46, 90))      # 2
+        num_analyze = len(range(-45, 91, 45))    # 4
+        self._initProgress(num_x * num_angle * num_analyze)  # 328
+
         all_data = []
         for x in range(0, 41, 1):           # 0–20 mm in 0.5 mm steps
             if not self.worker._is_running:
@@ -610,15 +672,19 @@ class SLIM(QObject):
                         T1=0, T2=float(x / 2),
                     )
                     all_data.append(data)  # FIX 3: append, not extend
+                    self._stepProgress()
  
         self.saveHDF5(all_data, "CPscan")
         self.homeAll()
+        self._resetProgress()
 
 
     # So there's a very specific error that comes from using Mueller, because it's the only automation that exceeds 360
     # If you cancel mueller automation, it doesn't home. So the display while showing some orientation as n/360, is actually
     # some number N*360 + n in the code, so you if try to manuelly change it to like something under 360, it'll freak out and rotate a lot
     def _mueller(self, theta = 20, N = 16):
+        self._initProgress(N)
+
         all_data = []
         for value in range(theta, (theta * N) + 1, theta):
             if not self.worker._is_running:
@@ -626,9 +692,11 @@ class SLIM(QObject):
             data = self.slimScan(P1=0, R1=value, R2=value * 5, P2=0)
             all_data.append(data)  # FIX 3: append, not extend
             print(f"Collection at R1: {value}  R2: {value * 5}")
+            self._resetProgress()
  
         self.saveHDF5(all_data, "muellerScan")
         self.homeAll()
+        self._resetProgress()
  
     def _cali(self):
         self.spectro.takeBackground()

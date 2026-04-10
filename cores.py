@@ -5,6 +5,7 @@ import pyqtgraph as pg
 from seabreeze.spectrometers import Spectrometer, list_devices
 
 
+
 """ Create QObject classes for each hardware controller. """
 class Worker(QObject):
     """ Object that creates a thread for automation logic then moves logic
@@ -378,7 +379,7 @@ class SpectreCore(QObject):
 
     # Note: The way spectrometer works is that it seems to continiously load data. When int time change, need to take a measurement to 'clear' it from old one
     def takeBackground(self):
-        self.spec.intensities
+        self.spec.intensities()
         self.spec.wavelengths()
 
         self.spec.wavelengths()
@@ -680,6 +681,7 @@ class LivePlot(QObject):
         self.stopLiveView()
         if self.plot_window:
             self.plot_window.close()
+
 
 
 class PMTShield(QObject):
