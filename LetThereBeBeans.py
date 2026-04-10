@@ -86,21 +86,24 @@ class App(QObject):
             self.pageChanged.emit("slim_main.qml")
 
         elif automation == "xwingscan":
-            from cores import XWing, SpectreCore
+            from cores import XWing, Cornerstone, PMTShield
             from automation_clusters import XWingScan
 
             self.backends = {
-                'xwing':  XWing(),
-                'spectro': SpectreCore()
+                'xwing':      XWing("COM3"),
+                'cornerstone': Cornerstone(),
+                'pmt':         PMTShield(),
             }
             self.backends['automation'] = XWingScan(
                 self.backends['xwing'],
-                self.backends['spectro']
+                self.backends['cornerstone'],
+                self.backends['pmt'],
             )
 
-            self.engine.rootContext().setContextProperty("XWingBackend", self.backends['xwing'])
-            self.engine.rootContext().setContextProperty("SpectreBackend", self.backends['spectro'])
-            self.engine.rootContext().setContextProperty("XWingScanBackend", self.backends['automation'])
+            self.engine.rootContext().setContextProperty("XWingBackend",          self.backends['xwing'])
+            self.engine.rootContext().setContextProperty("CornerstoneBackend",     self.backends['cornerstone'])
+            self.engine.rootContext().setContextProperty("PMTGainShieldBackend",   self.backends['pmt'])
+            self.engine.rootContext().setContextProperty("XWingScanBackend",       self.backends['automation'])
 
             self.pageChanged.emit("xwingscan_main.qml")
 
