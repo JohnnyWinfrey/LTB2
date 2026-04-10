@@ -397,7 +397,8 @@ class SpectreCore(QObject):
         self.spec.wavelengths()
         self.background = self.spec.intensities(correct_dark_counts=True)
         sorted_bg = sorted(self.background, reverse=True)
-        self.checkOversaturation(sorted_bg[0])
+
+        self.checkOversaturation(sorted_bg[0]) 
         top_10_count = max(1, len(sorted_bg) // 10)
         self._bgCounts = sum(sorted_bg[:top_10_count]) / top_10_count
         self.backgroundChanged.emit()

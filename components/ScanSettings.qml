@@ -116,6 +116,20 @@ Rectangle {
                     }
                 }
             }
+            Row {
+                spacing: 5
+                Text { width: 55; text: "ScansToAvg:"; font.pixelSize: 10; font.family: "Courier"; color: "#ffffff"; verticalAlignment: Text.AlignVCenter }
+                Rectangle {
+                    width: 100; height: 18; color: "#000000"; border.width: 1
+                    TextInput {
+                        id: scansAvgInput
+                        anchors.fill: parent; text: "1"
+                        font.pixelSize: 11; color: "#ff6d00"
+                        horizontalAlignment: Text.AlignHCenter; verticalAlignment: Text.AlignVCenter
+                        onTextChanged: SpectroBackend.setScansToAvg(text)
+                    }
+                }
+            }
         }
     }
 }
