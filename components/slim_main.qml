@@ -7,6 +7,7 @@ ApplicationWindow {
     width: 600
     height: 900
     title: "SLIM Automation"
+    color: "#bebebe"
 
     Column {
         anchors.fill: parent
