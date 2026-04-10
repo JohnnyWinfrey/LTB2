@@ -19,33 +19,29 @@ ApplicationWindow {
             color: "#313131"
             border.width: 3
             
-            Row {
+            Button {
+                x: 10
+                anchors.verticalCenter: parent.verticalCenter
+                width: 80
+                height: 30
+                text: "← Home"
+                onClicked: {
+                    Qt.quit()
+                }
+                
+                background: Rectangle {
+                    anchors.fill: parent
+                    color: "#676767"
+                    border.width: 2
+                }
+            }
+            
+            Text {
                 anchors.centerIn: parent
-                spacing: 200
-                
-                Button {
-                    width: 80
-                    height: 30
-                    text: "← Home"
-                    onClicked: {
-                        // Go back to home - will need to reload home.qml
-                        Qt.quit()  // For now, just close
-                    }
-                    
-                    background: Rectangle {
-                        anchors.fill: parent
-                        color: "#676767"
-                        border.width: 2
-                    }
-                }
-                
-                Text {
-                    anchors.verticalCenter: parent.verticalCenter
-                    text: "SLIM - Structured Illumination"
-                    font.pixelSize: 20
-                    font.family: "Courier"
-                    color: "#bbf6ef"
-                }
+                text: "SLIM - Structured Illumination"
+                font.pixelSize: 20
+                font.family: "Courier"
+                color: "#bbf6ef"
             }
         }
         

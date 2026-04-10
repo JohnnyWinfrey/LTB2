@@ -566,7 +566,7 @@ class SLIM(QObject):
                 data = self.slimScan(
                     P1=angleStep, R1=angleStep,
                     R2=stokes_CW[s], P2=stokes_IP[s],
-                )
+                ) 
                 all_data.append(data)  # FIX 3: append, not extend
  
         self.homeAll()
