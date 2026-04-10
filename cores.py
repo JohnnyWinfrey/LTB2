@@ -346,6 +346,7 @@ class SpectreCore(QObject):
         self._region = "A"
         self._sampleName = "sample"
 
+        # Set limits on integration time and intensities based on spectrometer limits 
         self.intMin, self.intMax = self.specInfo.features['spectrometer'][0].get_integration_time_micros_limits()
         self.maxIntensity = self.specInfo.features['spectrometer'][0].get_maximum_intensity()
 
@@ -377,6 +378,17 @@ class SpectreCore(QObject):
         except ValueError:
             pass
 
+    @Slot(str)
+    def setScansToAvg(self, value):
+        try:
+            val = int(value)
+            if val < 1:
+                val = 1
+            self.scansToAvg = val
+            print(f"Scans to average -> {self.scansToAvg}")
+        except ValueError:
+            pass
+
     # Note: The way spectrometer works is that it seems to continiously load data. When int time change, need to take a measurement to 'clear' it from old one
     def takeBackground(self):
         self.spec.intensities()
@@ -385,6 +397,7 @@ class SpectreCore(QObject):
         self.spec.wavelengths()
         self.background = self.spec.intensities(correct_dark_counts=True)
         sorted_bg = sorted(self.background, reverse=True)
+        self.checkOversaturation(sorted_bg[0])
         top_10_count = max(1, len(sorted_bg) // 10)
         self._bgCounts = sum(sorted_bg[:top_10_count]) / top_10_count
         self.backgroundChanged.emit()
@@ -402,7 +415,7 @@ class SpectreCore(QObject):
         return wavelengths, intensities
     
     def checkOversaturation(self, maxMI):
-        if (maxMI >= (self.maxItensity-1)):
+        if (maxMI >= (self.maxIntensity-1)):
             print("WARNING: MEASUREMENT OVERSATURATED")
             return True 
         else:
