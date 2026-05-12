@@ -7,7 +7,8 @@ ApplicationWindow {
     width: 600
     height: 900
     title: "SLIM Automation"
-    
+    color: "#bebebe"
+
     Column {
         anchors.fill: parent
         spacing: 0
@@ -19,33 +20,29 @@ ApplicationWindow {
             color: "#313131"
             border.width: 3
             
-            Row {
+            Button {
+                x: 10
+                anchors.verticalCenter: parent.verticalCenter
+                width: 80
+                height: 30
+                text: "← Home"
+                onClicked: {
+                    Qt.quit()
+                }
+                
+                background: Rectangle {
+                    anchors.fill: parent
+                    color: "#676767"
+                    border.width: 2
+                }
+            }
+            
+            Text {
                 anchors.centerIn: parent
-                spacing: 200
-                
-                Button {
-                    width: 80
-                    height: 30
-                    text: "← Home"
-                    onClicked: {
-                        // Go back to home - will need to reload home.qml
-                        Qt.quit()  // For now, just close
-                    }
-                    
-                    background: Rectangle {
-                        anchors.fill: parent
-                        color: "#676767"
-                        border.width: 2
-                    }
-                }
-                
-                Text {
-                    anchors.verticalCenter: parent.verticalCenter
-                    text: "SLIM - Structured Illumination"
-                    font.pixelSize: 20
-                    font.family: "Courier"
-                    color: "#bbf6ef"
-                }
+                text: "SLIM - Structured Illumination"
+                font.pixelSize: 20
+                font.family: "Courier"
+                color: "#bbf6ef"
             }
         }
         
@@ -80,7 +77,7 @@ ApplicationWindow {
                 
                 Loader {
                     width: 200
-                    height: 351
+                    height: 200
                     source: "DeathStarController.qml"
                     
                     onLoaded: {
@@ -98,7 +95,7 @@ ApplicationWindow {
                 
                 Rectangle {
                     width: 200
-                    height: 600
+                    height: 500
                     color: "#313131"
                     border.width: 3
                     
@@ -106,7 +103,7 @@ ApplicationWindow {
                         x: 8
                         y: 8
                         width: 184
-                        height: 584
+                        height: 484
                         color: "#676767"
                         radius: 10
                         border.width: 3
@@ -124,7 +121,37 @@ ApplicationWindow {
                             }
                             
                             // --- Scan Mode Buttons ---
+                            Button {
+                                anchors.horizontalCenter: parent.horizontalCenter
+                                width: 150
+                                height: 35
+                                text: "Background"
+                                onClicked: SLIMBackend.threading("calibration")
+                                
+                                background: Rectangle {
+                                    anchors.fill: parent
+                                    color: "#149700"
+                                    border.width: 2
+                                }
+                            }
                             
+                            Rectangle {
+                                anchors.horizontalCenter: parent.horizontalCenter
+                                width: 150
+                                height: 25
+                                color: "#000000"
+                                border.width: 1
+                                radius: 4
+
+                                Text {
+                                    anchors.centerIn: parent
+                                    text: "BG: " + SpectroBackend.bgCounts
+                                    font.pixelSize: 12
+                                    font.family: "OCR A"
+                                    color: "#ff6d00"
+                                }
+                            }
+
                             Button {
                                 anchors.horizontalCenter: parent.horizontalCenter
                                 width: 150
@@ -139,19 +166,6 @@ ApplicationWindow {
                                 }
                             }
                             
-                            Button {
-                                anchors.horizontalCenter: parent.horizontalCenter
-                                width: 150
-                                height: 35
-                                text: "Calibration"
-                                onClicked: SLIMBackend.threading("calibration")
-                                
-                                background: Rectangle {
-                                    anchors.fill: parent
-                                    color: "#149700"
-                                    border.width: 2
-                                }
-                            }
                             
                             Button {
                                 anchors.horizontalCenter: parent.horizontalCenter
@@ -171,7 +185,7 @@ ApplicationWindow {
                                 anchors.horizontalCenter: parent.horizontalCenter
                                 width: 150
                                 height: 35
-                                text: "Linear Polar."
+                                text: "Planar Diffraction"
                                 onClicked: SLIMBackend.threading("edgeLP")
                                 
                                 background: Rectangle {
@@ -210,85 +224,6 @@ ApplicationWindow {
                                     border.width: 2
                                 }
                             }
-                            
-                            Rectangle {
-                                width: 150
-                                height: 2
-                                color: "#4d4d4d"
-                            }
-                            
-                            Text {
-                                anchors.horizontalCenter: parent.horizontalCenter
-                                text: "Scan Parameters"
-                                font.pixelSize: 14
-                                font.family: "Courier"
-                                color: "#b9f4ed"
-                            }
-                            
-                            Column {
-                                anchors.horizontalCenter: parent.horizontalCenter
-                                spacing: 10
-                                
-                                Row {
-                                    spacing: 10
-                                    
-                                    Text {
-                                        width: 80
-                                        text: "# Angles:"
-                                        font.pixelSize: 11
-                                        font.family: "Courier"
-                                        color: "#ffffff"
-                                        verticalAlignment: Text.AlignVCenter
-                                    }
-                                    
-                                    Rectangle {
-                                        width: 50
-                                        height: 20
-                                        color: "#000000"
-                                        border.width: 1
-                                        
-                                        TextInput {
-                                            id: numAngles
-                                            anchors.fill: parent
-                                            text: "5"
-                                            font.pixelSize: 12
-                                            color: "#ff6d00"
-                                            horizontalAlignment: Text.AlignHCenter
-                                            verticalAlignment: Text.AlignVCenter
-                                        }
-                                    }
-                                }
-                                
-                                Row {
-                                    spacing: 10
-                                    
-                                    Text {
-                                        width: 80
-                                        text: "# Phases:"
-                                        font.pixelSize: 11
-                                        font.family: "Courier"
-                                        color: "#ffffff"
-                                        verticalAlignment: Text.AlignVCenter
-                                    }
-                                    
-                                    Rectangle {
-                                        width: 50
-                                        height: 20
-                                        color: "#000000"
-                                        border.width: 1
-                                        
-                                        TextInput {
-                                            id: numPhases
-                                            anchors.fill: parent
-                                            text: "3"
-                                            font.pixelSize: 12
-                                            color: "#ff6d00"
-                                            horizontalAlignment: Text.AlignHCenter
-                                            verticalAlignment: Text.AlignVCenter
-                                        }
-                                    }
-                                }
-                            }
                         }
                     }
                 }
@@ -324,7 +259,7 @@ ApplicationWindow {
                 
                 Loader {
                     width: 200
-                    height: 351
+                    height: 200
                     source: "DeathStarController.qml"
                     
                     onLoaded: {
@@ -335,19 +270,28 @@ ApplicationWindow {
             }
         }
         
-        // Status bar
+        // Status / Progress bar
         Rectangle {
             width: 600
             height: 50
             color: "#2d2d2d"
             border.width: 2
-            
+
+            // Progress fill
+            Rectangle {
+                width: parent.width * SLIMBackend.progress
+                height: parent.height
+                color: "#43ac33"
+            }
+
             Text {
                 anchors.centerIn: parent
-                text: "Ready"
+                text: SLIMBackend.progress > 0
+                    ? Math.round(SLIMBackend.progress * 100) + "%  " + SLIMBackend.timeRemaining
+                    : "Ready"
                 font.pixelSize: 14
                 font.family: "Courier"
-                color: "#43ac33"
+                color: SLIMBackend.progress > 0 ? "#ffffff" : "#43ac33"
             }
         }
     }
