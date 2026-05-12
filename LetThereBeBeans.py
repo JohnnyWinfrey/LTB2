@@ -7,6 +7,7 @@ os.environ["QT_QUICK_CONTROLS_STYLE"] = "Fusion"
 from PySide6.QtWidgets import QApplication
 from PySide6.QtQml import QQmlApplicationEngine
 from PySide6.QtCore import QUrl, QObject, Slot, Signal
+from cores import TLCameraCore, TLCameraImageProvider
 
 class App(QObject):
     pageChanged = Signal(str)
@@ -116,6 +117,12 @@ engine = QQmlApplicationEngine()
 app_backend = App(engine)
 
 engine.rootContext().setContextProperty("App", app_backend)
+
+_tl_image_provider = TLCameraImageProvider()
+engine.addImageProvider("camera", _tl_image_provider)
+tl_camera_core = TLCameraCore(camera_index=0, image_provider=_tl_image_provider)
+engine.rootContext().setContextProperty("tlCameraCore", tl_camera_core)
+
 engine.load(Path(__file__).parent / "components/MainWindow.qml")
 
 sys.exit(app.exec())

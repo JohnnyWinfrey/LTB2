@@ -102,12 +102,34 @@ Rectangle {
                 }
             }
 
-            // Filler
+            // Camera popup button + filler
             Rectangle {
                 width: 400
                 height: parent.height - 560
                 color: "#6f6f6f"
+
+                Button {
+                    x: 10
+                    y: 8
+                    width: 120
+                    height: 28
+                    text: "Camera View"
+                    onClicked: cameraPopup.visible = true
+
+                    background: Rectangle {
+                        anchors.fill: parent; color: "#00579e"; border.width: 2; radius: 5
+                    }
+                    contentItem: Text {
+                        text: parent.text; font.pixelSize: 10; font.family: "Courier"; color: "#ffffff"
+                        horizontalAlignment: Text.AlignHCenter; verticalAlignment: Text.AlignVCenter
+                    }
+                }
             }
         }
+    }
+
+    CameraViewPopup {
+        id: cameraPopup
+        visible: false
     }
 }

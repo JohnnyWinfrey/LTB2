@@ -1,8 +1,12 @@
 from PySide6.QtCore import QObject, Signal, Property, Slot, QThread
 from PySide6.QtWidgets import QFileDialog
+from PySide6.QtQuick import QQuickImageProvider
+from PySide6.QtGui import QImage
 from hardware_controllers import *
 import pyqtgraph as pg
+import numpy as np
 from seabreeze.spectrometers import Spectrometer, list_devices
+from pylablib.devices.Thorlabs import ThorlabsTLCamera
 
 
 
@@ -721,3 +725,170 @@ class PMTShield(QObject):
         self.pmt.commandSend(f"{self._gain:.3f}")
         print(f"Gain set to: {self._gain:.3f}")
         self.gainChanged.emit()
+
+
+class TLCameraImageProvider(QQuickImageProvider):
+    """QML image provider for TLCameraCore live frames.
+    Registered as 'camera'; frames are requested via image://camera/frame?t=N."""
+
+    def __init__(self):
+        super().__init__(QQuickImageProvider.ImageType.Image)
+        self._current_frame = QImage(1440, 1080, QImage.Format.Format_Grayscale8)
+        self._current_frame.fill(0)
+
+    def requestImage(self, id, size, requestedSize):
+        return self._current_frame, self._current_frame.size()
+
+    def update_frame(self, qimage):
+        self._current_frame = qimage
+
+
+class TLCameraCore(QObject):
+    """Hardware core for Thorlabs CS165MU (TL SDK) camera via pylablib."""
+
+    frameChanged = Signal()
+    exposureChanged = Signal()
+    statusChanged = Signal()
+
+    def __init__(self, camera_index=0, image_provider=None):
+        super().__init__()
+        self._camera_index = camera_index
+        self._image_provider = image_provider
+        self._exposure_ms = 10.0
+        self._status = "Disconnected"
+        self._is_live = False
+        self._frame_counter = 0
+        self._live_worker = None
+        self._camera = None
+
+        try:
+            self._camera = ThorlabsTLCamera()
+            self._status = "Connected"
+            print("TLCameraCore online")
+        except Exception as e:
+            self._status = f"Error: {e}"
+            print(f"TLCameraCore failed to connect: {e}")
+        self.statusChanged.emit()
+
+    # --- Properties ---
+
+    @Property(str, notify=frameChanged)
+    def liveFrame(self):
+        return f"image://camera/frame?t={self._frame_counter}"
+
+    @Property(float, notify=exposureChanged)
+    def exposure(self):
+        return self._exposure_ms
+
+    @Property(str, notify=statusChanged)
+    def status(self):
+        return self._status
+
+    # --- Slots ---
+
+    @Slot(str)
+    def setExposure(self, value_str):
+        try:
+            val = float(value_str)
+            self._exposure_ms = val
+            if self._camera is not None:
+                self._camera.set_exposure(val / 1000.0)  # pylablib takes seconds
+            self.exposureChanged.emit()
+        except (ValueError, Exception):
+            pass
+
+    @Slot()
+    def startLiveView(self):
+        if self._is_live or self._camera is None:
+            return
+        self._is_live = True
+        self._status = "Live"
+        self.statusChanged.emit()
+
+        def live_loop():
+            try:
+                self._camera.start_acquisition(nframes=100)
+                while self._is_live:
+                    frame = self._camera.read_oldest_image(timeout=0.5)
+                    if frame is not None and self._image_provider is not None:
+                        qimage = self._numpy_to_qimage(frame)
+                        self._image_provider.update_frame(qimage)
+                        self._frame_counter += 1
+                        self.frameChanged.emit()
+            except Exception as e:
+                self._status = f"Error: {e}"
+                self.statusChanged.emit()
+            finally:
+                try:
+                    self._camera.stop_acquisition()
+                except Exception:
+                    pass
+                self._is_live = False
+                self._status = "Connected"
+                self.statusChanged.emit()
+
+        self._live_worker = Worker(live_loop)
+        self._live_worker.start()
+
+    @Slot()
+    def stopLiveView(self):
+        self._is_live = False
+        if self._live_worker is not None:
+            self._live_worker.stop()
+
+    @Slot()
+    def close(self):
+        self.stopLiveView()
+        if self._camera is not None:
+            try:
+                self._camera.close()
+            except Exception:
+                pass
+
+    # --- Python-only capture methods (call stopLiveView() first) ---
+
+    def captureFrame(self):
+        """Capture a single frame. Returns a uint16 numpy array or None."""
+        if self._camera is None:
+            return None
+        try:
+            self._camera.start_acquisition(nframes=1)
+            frame = self._camera.read_oldest_image(timeout=2.0)
+            self._camera.stop_acquisition()
+            return frame
+        except Exception as e:
+            print(f"TLCameraCore captureFrame error: {e}")
+            return None
+
+    def captureAveraged(self, n):
+        """Capture n frames and return their float64 mean, or None on failure."""
+        if self._camera is None:
+            return None
+        try:
+            self._camera.start_acquisition(nframes=n)
+            frames = []
+            for _ in range(n):
+                frame = self._camera.read_oldest_image(timeout=2.0)
+                if frame is not None:
+                    frames.append(frame.astype(np.float64))
+            self._camera.stop_acquisition()
+            if not frames:
+                return None
+            return np.mean(frames, axis=0)
+        except Exception as e:
+            print(f"TLCameraCore captureAveraged error: {e}")
+            return None
+
+    # --- Internal helpers ---
+
+    def _numpy_to_qimage(self, arr):
+        """Normalise a uint16 2D array to uint8 and wrap in a QImage."""
+        lo, hi = arr.min(), arr.max()
+        if hi > lo:
+            arr8 = ((arr.astype(np.float32) - lo) / (hi - lo) * 255).astype(np.uint8)
+        else:
+            arr8 = np.zeros_like(arr, dtype=np.uint8)
+        arr8 = np.ascontiguousarray(arr8)
+        h, w = arr8.shape
+        qimg = QImage(arr8.data, w, h, w, QImage.Format.Format_Grayscale8)
+        return qimg.copy()  # copy ensures Python owns the pixel buffer
