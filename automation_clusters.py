@@ -717,7 +717,7 @@ class SLIM(QObject):
     # Core measurement
     # ──────────────────────────────────────────────────────────────────────
  
-    def slimScan(self, P1, R1, R2, P2, T1="", T2="", moveTime=0.5):
+    def slimScan(self, P1, R1, R2, P2, T1="", T2="", moveTime=2):
         """
         Move both arms to position and acquire one spectrum.
  
