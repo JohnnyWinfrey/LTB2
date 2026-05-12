@@ -858,8 +858,12 @@ class TLCameraCore(QObject):
         if self._camera is None:
             return None
         try:
-            self._camera.start_acquisition(nframes=1)
-            frame = self._camera.read_oldest_image(timeout=2.0)
+            self._camera.setup_acquisition(nframes=1)
+            self._camera.start_acquisition()
+            if not self._camera.wait_for_frame(timeout=2.0):
+                self._camera.stop_acquisition()
+                return None
+            frame = self._camera.read_oldest_image()
             self._camera.stop_acquisition()
             return frame
         except Exception as e:
@@ -871,10 +875,13 @@ class TLCameraCore(QObject):
         if self._camera is None:
             return None
         try:
-            self._camera.start_acquisition(nframes=n)
+            self._camera.setup_acquisition(nframes=n)
+            self._camera.start_acquisition()
             frames = []
             for _ in range(n):
-                frame = self._camera.read_oldest_image(timeout=2.0)
+                if not self._camera.wait_for_frame(timeout=2.0):
+                    break
+                frame = self._camera.read_oldest_image()
                 if frame is not None:
                     frames.append(frame.astype(np.float64))
             self._camera.stop_acquisition()
