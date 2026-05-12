@@ -757,8 +757,9 @@ class SLIM(QObject):
 class XWingScan(QObject):
     progressChanged     = Signal(str)
     statusChanged       = Signal(str)
-    detectorTypeChanged = Signal()
+    detectorTypeChanged  = Signal()
     spectroStatusChanged = Signal()
+    progressBarChanged   = Signal()
 
     def __init__(self, xwing, cornerstone, pmt, tlCamera=None):
         super().__init__()
@@ -778,6 +779,9 @@ class XWingScan(QObject):
         self._spectro_status    = "Not Connected"
         self._spectro_integration = 500000
         self._spectro_scans_avg   = 1
+        self._total_steps  = 0
+        self._current_step = 0
+        self._start_time   = None
         self.pmt.changeGain(self.gain)
         print("XWingScan Automation Ready")
 
@@ -830,6 +834,42 @@ class XWingScan(QObject):
             pass
         if self.spectre:
             self.spectre.setScansToAvg(value)
+
+    # ── Progress bar ─────────────────────────────────────────────────────────
+
+    @Property(float, notify=progressBarChanged)
+    def progress(self):
+        if self._total_steps == 0:
+            return 0.0
+        return self._current_step / self._total_steps
+
+    @Property(str, notify=progressBarChanged)
+    def timeRemaining(self):
+        if self._current_step == 0 or self._start_time is None:
+            return ""
+        elapsed = time.time() - self._start_time
+        avg_per_step = elapsed / self._current_step
+        remaining = avg_per_step * (self._total_steps - self._current_step)
+        mins = int(remaining // 60) + 1
+        if mins <= 1:
+            return "(<1 min)"
+        return f"(~{mins} mins)"
+
+    def _initProgress(self, total_steps):
+        self._total_steps  = total_steps
+        self._current_step = 0
+        self._start_time   = time.time()
+        self.progressBarChanged.emit()
+
+    def _stepProgress(self):
+        self._current_step += 1
+        self.progressBarChanged.emit()
+
+    def _resetProgress(self):
+        self._total_steps  = 0
+        self._current_step = 0
+        self._start_time   = None
+        self.progressBarChanged.emit()
 
     # ── Grid / scan settings ─────────────────────────────────────────────────
 
@@ -907,6 +947,7 @@ class XWingScan(QObject):
         all_y        = []
         all_voltages = []
 
+        self._initProgress(total_points * len(wavelengths))
         self.cornerstone.mono.open_shutter()
         self.statusChanged.emit("Running...")
         print(f"XWing scan (PMT): {self._nx}x{self._ny} pts, spacing={self._spacing}mm, "
@@ -949,6 +990,7 @@ class XWingScan(QObject):
                     voltage = (d1 + d2 + d3 + d4) / 4
 
                     point_voltages.append(voltage)
+                    self._stepProgress()
 
                     self.cornerstone.currentWavelength = wavelength
                     self.cornerstone.waveChanged.emit()
@@ -965,6 +1007,7 @@ class XWingScan(QObject):
                 self.progressChanged.emit(f"Point {point_num}/{total_points}")
 
         self.cornerstone.mono.close_shutter()
+        self._resetProgress()
 
         if all_voltages:
             self._saveHDF5_pmt(all_x, all_y, wavelengths, all_voltages)
@@ -986,6 +1029,7 @@ class XWingScan(QObject):
         all_intensities = []
         wavelengths  = None
 
+        self._initProgress(total_points)
         self.statusChanged.emit("Running...")
         print(f"XWing scan (Spectrometer): {self._nx}x{self._ny} pts, spacing={self._spacing}mm")
 
@@ -1019,8 +1063,11 @@ class XWingScan(QObject):
                 all_intensities.append(intensity)
 
                 point_num += 1
+                self._stepProgress()
                 self.progressChanged.emit(f"Point {point_num}/{total_points}")
                 print(f"  Pt {point_num}/{total_points} X={target_x:.3f} Y={target_y:.3f}")
+
+        self._resetProgress()
 
         if all_intensities and wavelengths is not None:
             self._saveHDF5_spectrometer(all_x, all_y, wavelengths, all_intensities)
@@ -1041,6 +1088,7 @@ class XWingScan(QObject):
         all_y        = []
         all_images   = []
 
+        self._initProgress(total_points)
         self.statusChanged.emit("Running...")
         print(f"XWing scan (Camera): {self._nx}x{self._ny} pts, spacing={self._spacing}mm")
 
@@ -1075,8 +1123,11 @@ class XWingScan(QObject):
                 all_images.append(frame)
 
                 point_num += 1
+                self._stepProgress()
                 self.progressChanged.emit(f"Point {point_num}/{total_points}")
                 print(f"  Pt {point_num}/{total_points} X={target_x:.3f} Y={target_y:.3f} frame={frame.shape}")
+
+        self._resetProgress()
 
         if all_images:
             self._saveHDF5_camera(all_x, all_y, all_images)

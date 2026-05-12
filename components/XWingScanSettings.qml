@@ -109,16 +109,34 @@ Rectangle {
                 }
             }
 
-            // Progress + Status
+            // Progress bar + status
             Column {
                 anchors.horizontalCenter: parent.horizontalCenter
-                spacing: 4
+                spacing: 6
 
-                Text {
-                    id: progressText
-                    anchors.horizontalCenter: parent.horizontalCenter
-                    text: "—"
-                    font.pixelSize: 18; font.family: "Cascadia Mono"; color: "#ff6d00"
+                // Bar
+                Rectangle {
+                    width: 340; height: 28
+                    color: "#2d2d2d"
+                    border.width: 2
+                    radius: 4
+                    clip: true
+
+                    Rectangle {
+                        width: parent.width * XWingScanBackend.progress
+                        height: parent.height
+                        color: "#43ac33"
+                        radius: 4
+                    }
+
+                    Text {
+                        anchors.centerIn: parent
+                        text: XWingScanBackend.progress > 0
+                            ? Math.round(XWingScanBackend.progress * 100) + "%  " + XWingScanBackend.timeRemaining
+                            : "Ready"
+                        font.pixelSize: 13; font.family: "Courier"
+                        color: XWingScanBackend.progress > 0 ? "#ffffff" : "#43ac33"
+                    }
                 }
 
                 Text {
@@ -133,7 +151,6 @@ Rectangle {
 
     Connections {
         target: XWingScanBackend
-        function onProgressChanged(msg) { progressText.text = msg }
-        function onStatusChanged(msg)   { statusText.text   = msg }
+        function onStatusChanged(msg) { statusText.text = msg }
     }
 }
