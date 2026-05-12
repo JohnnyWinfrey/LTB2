@@ -10,7 +10,7 @@ Rectangle {
         anchors.fill: parent
         spacing: 0
 
-        // Left column: jog controls + PMT gain
+        // Left column: jog controls + detector selector
         Column {
             width: 200
             height: parent.height
@@ -22,10 +22,80 @@ Rectangle {
                 source: "XWingSimpleController.qml"
             }
 
-            Loader {
+            // Detector selector panel
+            Rectangle {
                 width: 200
-                height: 200
-                source: "PMTGainShieldController.qml"
+                height: 160
+                color: "#313131"
+                border.width: 3
+
+                Rectangle {
+                    x: 8; y: 8
+                    width: 184; height: 144
+                    color: "#676767"
+                    radius: 10
+                    border.width: 3
+
+                    Column {
+                        anchors.centerIn: parent
+                        spacing: 10
+
+                        Text {
+                            anchors.horizontalCenter: parent.horizontalCenter
+                            text: "Detector"
+                            font.pixelSize: 14
+                            font.family: "Courier"
+                            color: "#bbf6ef"
+                        }
+
+                        ComboBox {
+                            id: detectorCombo
+                            width: 160
+                            model: ["PMT", "Spectrometer", "Camera"]
+                            font.family: "Courier"
+                            font.pixelSize: 11
+
+                            onActivated: {
+                                var types = ["pmt", "spectrometer", "camera"]
+                                XWingScanBackend.setDetectorType(types[currentIndex])
+                            }
+
+                            background: Rectangle {
+                                color: "#4d4d4d"
+                                border.width: 2
+                                radius: 4
+                            }
+                            contentItem: Text {
+                                leftPadding: 8
+                                text: detectorCombo.displayText
+                                font: detectorCombo.font
+                                color: "#ff6d00"
+                                verticalAlignment: Text.AlignVCenter
+                            }
+                        }
+
+                        Button {
+                            width: 160; height: 30
+                            text: "Detector Settings"
+                            onClicked: detectorSettingsPopup.visible = true
+
+                            background: Rectangle {
+                                anchors.fill: parent
+                                color: "#00579e"
+                                border.width: 2
+                                radius: 5
+                            }
+                            contentItem: Text {
+                                text: parent.text
+                                font.pixelSize: 10
+                                font.family: "Courier"
+                                color: "#ffffff"
+                                horizontalAlignment: Text.AlignHCenter
+                                verticalAlignment: Text.AlignVCenter
+                            }
+                        }
+                    }
+                }
             }
         }
 
@@ -131,5 +201,11 @@ Rectangle {
     CameraViewPopup {
         id: cameraPopup
         visible: false
+    }
+
+    DetectorSettingsPopup {
+        id: detectorSettingsPopup
+        visible: false
+        detectorType: XWingScanBackend.detectorType
     }
 }

@@ -91,7 +91,7 @@ class App(QObject):
             from automation_clusters import XWingScan
 
             self.backends = {
-                'xwing':      XWing("COM3"),
+                'xwing':       XWing("COM3"),
                 'cornerstone': Cornerstone(),
                 'pmt':         PMTShield(),
             }
@@ -99,12 +99,13 @@ class App(QObject):
                 self.backends['xwing'],
                 self.backends['cornerstone'],
                 self.backends['pmt'],
+                tlCamera=tl_camera_core,
             )
 
-            self.engine.rootContext().setContextProperty("XWingBackend",          self.backends['xwing'])
-            self.engine.rootContext().setContextProperty("CornerstoneBackend",     self.backends['cornerstone'])
-            self.engine.rootContext().setContextProperty("PMTGainShieldBackend",   self.backends['pmt'])
-            self.engine.rootContext().setContextProperty("XWingScanBackend",       self.backends['automation'])
+            self.engine.rootContext().setContextProperty("XWingBackend",         self.backends['xwing'])
+            self.engine.rootContext().setContextProperty("CornerstoneBackend",   self.backends['cornerstone'])
+            self.engine.rootContext().setContextProperty("PMTGainShieldBackend", self.backends['pmt'])
+            self.engine.rootContext().setContextProperty("XWingScanBackend",     self.backends['automation'])
 
             self.pageChanged.emit("xwingscan_main.qml")
 

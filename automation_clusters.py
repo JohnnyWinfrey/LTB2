@@ -755,23 +755,83 @@ class SLIM(QObject):
         raise NotImplementedError("scanIntensity not yet implemented")
  
 class XWingScan(QObject):
-    progressChanged = Signal(str)
-    statusChanged   = Signal(str)
+    progressChanged     = Signal(str)
+    statusChanged       = Signal(str)
+    detectorTypeChanged = Signal()
+    spectroStatusChanged = Signal()
 
-    def __init__(self, xwing, cornerstone, pmt):
+    def __init__(self, xwing, cornerstone, pmt, tlCamera=None):
         super().__init__()
         self.xwing       = xwing
         self.cornerstone = cornerstone
         self.pmt         = pmt
+        self.tlCamera    = tlCamera
+        self.spectre     = None
         self.digi        = NIScopeClient()
         self.worker      = None
-        self._sample_name = "sample"
-        self._nx          = 5
-        self._ny          = 5
-        self._spacing     = 0.5   # mm
-        self.gain         = 0
+        self._sample_name       = "sample"
+        self._nx                = 5
+        self._ny                = 5
+        self._spacing           = 0.5
+        self.gain               = 0
+        self._detector_type     = "pmt"
+        self._spectro_status    = "Not Connected"
+        self._spectro_integration = 500000
+        self._spectro_scans_avg   = 1
         self.pmt.changeGain(self.gain)
         print("XWingScan Automation Ready")
+
+    # ── Detector type ────────────────────────────────────────────────────────
+
+    @Property(str, notify=detectorTypeChanged)
+    def detectorType(self):
+        return self._detector_type
+
+    @Slot(str)
+    def setDetectorType(self, value):
+        self._detector_type = value
+        self.detectorTypeChanged.emit()
+        print(f"Detector type set to: {value}")
+
+    # ── Spectrometer lazy connect ─────────────────────────────────────────────
+
+    @Property(str, notify=spectroStatusChanged)
+    def spectroStatus(self):
+        return self._spectro_status
+
+    @Slot()
+    def connectSpectrometer(self):
+        try:
+            from cores import SpectreCore
+            self.spectre = SpectreCore()
+            self.spectre.setIntegration(str(self._spectro_integration))
+            self.spectre.setScansToAvg(str(self._spectro_scans_avg))
+            self._spectro_status = "Connected"
+        except Exception as e:
+            self.spectre = None
+            self._spectro_status = f"Error: {e}"
+        self.spectroStatusChanged.emit()
+        print(f"Spectrometer connect: {self._spectro_status}")
+
+    @Slot(str)
+    def setSpectroIntegration(self, value):
+        try:
+            self._spectro_integration = int(value)
+        except ValueError:
+            pass
+        if self.spectre:
+            self.spectre.setIntegration(value)
+
+    @Slot(str)
+    def setSpectroScansAvg(self, value):
+        try:
+            self._spectro_scans_avg = int(value)
+        except ValueError:
+            pass
+        if self.spectre:
+            self.spectre.setScansToAvg(value)
+
+    # ── Grid / scan settings ─────────────────────────────────────────────────
 
     @Slot(str)
     def setSampleName(self, value):
@@ -799,6 +859,8 @@ class XWingScan(QObject):
         except ValueError:
             pass
 
+    # ── Scan control ─────────────────────────────────────────────────────────
+
     @Slot()
     def threading(self):
         if self.worker is not None and self.worker.is_running():
@@ -813,36 +875,25 @@ class XWingScan(QObject):
             self.worker.stop()
         self.statusChanged.emit("Stopped.")
 
-    def _saveHDF5(self, all_x, all_y, wavelengths, all_voltages):
-        timestamp  = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
-        name       = re.sub(r'[^\w\-]', '_', self._sample_name) or "sample"
-        output_dir = os.path.join("data", f"{name}_{timestamp}")
-        os.makedirs(output_dir, exist_ok=True)
-        h5_path    = os.path.join(output_dir, f"{name}_xwing_scan.h5")
-
-        voltage_matrix = np.array(all_voltages)   # (N_pts, N_wavelengths)
-
-        with h5py.File(h5_path, "w") as f:
-            f.attrs["sample_name"]      = self._sample_name
-            f.attrs["nx"]               = self._nx
-            f.attrs["ny"]               = self._ny
-            f.attrs["spacing_mm"]       = self._spacing
-            f.attrs["gain"]             = self.gain
-            f.attrs["start_wavelength"] = self.cornerstone.startWavelength
-            f.attrs["end_wavelength"]   = self.cornerstone.endWavelength
-            f.attrs["num_steps"]        = self.cornerstone.numSteps
-
-            f.create_dataset("x",          data=np.array(all_x))
-            f.create_dataset("y",          data=np.array(all_y))
-            f.create_dataset("wavelength", data=np.array(wavelengths))
-            f.create_dataset(
-                "voltage", data=voltage_matrix,
-                compression="gzip", compression_opts=4,
-            )
-
-        print(f"Saved {len(all_x)} points → {h5_path}")
+    # ── Dispatcher ───────────────────────────────────────────────────────────
 
     def _scan(self):
+        if self._detector_type == "pmt":
+            self._scan_pmt()
+        elif self._detector_type == "spectrometer":
+            if self.spectre is None:
+                self.statusChanged.emit("Error: Spectrometer not connected.")
+                return
+            self._scan_spectrometer()
+        elif self._detector_type == "camera":
+            if self.tlCamera is None:
+                self.statusChanged.emit("Error: Camera not connected.")
+                return
+            self._scan_camera()
+
+    # ── PMT scan (original behaviour) ────────────────────────────────────────
+
+    def _scan_pmt(self):
         origin_x = self.xwing._x
         origin_y = self.xwing._y
 
@@ -858,14 +909,13 @@ class XWingScan(QObject):
 
         self.cornerstone.mono.open_shutter()
         self.statusChanged.emit("Running...")
-        print(f"XWing scan: {self._nx}x{self._ny} pts, spacing={self._spacing}mm, "
+        print(f"XWing scan (PMT): {self._nx}x{self._ny} pts, spacing={self._spacing}mm, "
               f"λ {self.cornerstone.startWavelength}–{self.cornerstone.endWavelength}nm "
               f"({self.cornerstone.numSteps} steps)")
 
         for iy in range(self._ny):
             if not self.worker._is_running:
                 break
-            # Boustrophedon (snake) scan to minimise stage travel
             ix_range = range(self._nx) if iy % 2 == 0 else range(self._nx - 1, -1, -1)
 
             for ix in ix_range:
@@ -884,7 +934,6 @@ class XWingScan(QObject):
                 self.xwing.xChanged.emit()
                 self.xwing.yChanged.emit()
 
-                # Sweep wavelengths at this spatial position
                 point_voltages = []
                 for wavelength in wavelengths:
                     if not self.worker._is_running:
@@ -918,8 +967,199 @@ class XWingScan(QObject):
         self.cornerstone.mono.close_shutter()
 
         if all_voltages:
-            self._saveHDF5(all_x, all_y, wavelengths, all_voltages)
+            self._saveHDF5_pmt(all_x, all_y, wavelengths, all_voltages)
 
         status = "Done." if self.worker._is_running else "Stopped."
         self.statusChanged.emit(status)
         print(f"Scan complete. {point_num} points measured.")
+
+    # ── Spectrometer scan ────────────────────────────────────────────────────
+
+    def _scan_spectrometer(self):
+        origin_x = self.xwing._x
+        origin_y = self.xwing._y
+
+        total_points = self._nx * self._ny
+        point_num    = 0
+        all_x        = []
+        all_y        = []
+        all_intensities = []
+        wavelengths  = None
+
+        self.statusChanged.emit("Running...")
+        print(f"XWing scan (Spectrometer): {self._nx}x{self._ny} pts, spacing={self._spacing}mm")
+
+        for iy in range(self._ny):
+            if not self.worker._is_running:
+                break
+            ix_range = range(self._nx) if iy % 2 == 0 else range(self._nx - 1, -1, -1)
+
+            for ix in ix_range:
+                if not self.worker._is_running:
+                    break
+
+                target_x = origin_x + ix * self._spacing
+                target_y = origin_y + iy * self._spacing
+
+                self.xwing.ac.commandSend(
+                    f"G1 X{target_x:.4f} Y{target_y:.4f} F{self.xwing.rate}")
+                time.sleep(1.5)
+
+                self.xwing._x = target_x
+                self.xwing._y = target_y
+                self.xwing.xChanged.emit()
+                self.xwing.yChanged.emit()
+
+                wl, intensity = self.spectre.takeSpectrum()
+                if wavelengths is None:
+                    wavelengths = wl
+
+                all_x.append(round(target_x, 4))
+                all_y.append(round(target_y, 4))
+                all_intensities.append(intensity)
+
+                point_num += 1
+                self.progressChanged.emit(f"Point {point_num}/{total_points}")
+                print(f"  Pt {point_num}/{total_points} X={target_x:.3f} Y={target_y:.3f}")
+
+        if all_intensities and wavelengths is not None:
+            self._saveHDF5_spectrometer(all_x, all_y, wavelengths, all_intensities)
+
+        status = "Done." if self.worker._is_running else "Stopped."
+        self.statusChanged.emit(status)
+        print(f"Scan complete. {point_num} points measured.")
+
+    # ── Camera scan ──────────────────────────────────────────────────────────
+
+    def _scan_camera(self):
+        origin_x = self.xwing._x
+        origin_y = self.xwing._y
+
+        total_points = self._nx * self._ny
+        point_num    = 0
+        all_x        = []
+        all_y        = []
+        all_images   = []
+
+        self.statusChanged.emit("Running...")
+        print(f"XWing scan (Camera): {self._nx}x{self._ny} pts, spacing={self._spacing}mm")
+
+        for iy in range(self._ny):
+            if not self.worker._is_running:
+                break
+            ix_range = range(self._nx) if iy % 2 == 0 else range(self._nx - 1, -1, -1)
+
+            for ix in ix_range:
+                if not self.worker._is_running:
+                    break
+
+                target_x = origin_x + ix * self._spacing
+                target_y = origin_y + iy * self._spacing
+
+                self.xwing.ac.commandSend(
+                    f"G1 X{target_x:.4f} Y{target_y:.4f} F{self.xwing.rate}")
+                time.sleep(1.5)
+
+                self.xwing._x = target_x
+                self.xwing._y = target_y
+                self.xwing.xChanged.emit()
+                self.xwing.yChanged.emit()
+
+                frame = self.tlCamera.captureFrame()
+                if frame is None:
+                    print(f"  Warning: no frame at Pt {point_num+1}, skipping")
+                    continue
+
+                all_x.append(round(target_x, 4))
+                all_y.append(round(target_y, 4))
+                all_images.append(frame)
+
+                point_num += 1
+                self.progressChanged.emit(f"Point {point_num}/{total_points}")
+                print(f"  Pt {point_num}/{total_points} X={target_x:.3f} Y={target_y:.3f} frame={frame.shape}")
+
+        if all_images:
+            self._saveHDF5_camera(all_x, all_y, all_images)
+
+        status = "Done." if self.worker._is_running else "Stopped."
+        self.statusChanged.emit(status)
+        print(f"Scan complete. {point_num} points measured.")
+
+    # ── HDF5 save methods ────────────────────────────────────────────────────
+
+    def _saveHDF5_pmt(self, all_x, all_y, wavelengths, all_voltages):
+        timestamp  = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+        name       = re.sub(r'[^\w\-]', '_', self._sample_name) or "sample"
+        output_dir = os.path.join("data", f"{name}_{timestamp}")
+        os.makedirs(output_dir, exist_ok=True)
+        h5_path    = os.path.join(output_dir, f"{name}_xwing_scan_pmt.h5")
+
+        with h5py.File(h5_path, "w") as f:
+            f.attrs["sample_name"]      = self._sample_name
+            f.attrs["nx"]               = self._nx
+            f.attrs["ny"]               = self._ny
+            f.attrs["spacing_mm"]       = self._spacing
+            f.attrs["gain"]             = self.gain
+            f.attrs["start_wavelength"] = self.cornerstone.startWavelength
+            f.attrs["end_wavelength"]   = self.cornerstone.endWavelength
+            f.attrs["num_steps"]        = self.cornerstone.numSteps
+
+            f.create_dataset("x",          data=np.array(all_x))
+            f.create_dataset("y",          data=np.array(all_y))
+            f.create_dataset("wavelength", data=np.array(wavelengths))
+            f.create_dataset(
+                "voltage", data=np.array(all_voltages),
+                compression="gzip", compression_opts=4,
+            )
+
+        print(f"Saved {len(all_x)} points → {h5_path}")
+
+    def _saveHDF5_spectrometer(self, all_x, all_y, wavelengths, all_intensities):
+        timestamp  = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+        name       = re.sub(r'[^\w\-]', '_', self._sample_name) or "sample"
+        output_dir = os.path.join("data", f"{name}_{timestamp}")
+        os.makedirs(output_dir, exist_ok=True)
+        h5_path    = os.path.join(output_dir, f"{name}_xwing_scan_spectro.h5")
+
+        with h5py.File(h5_path, "w") as f:
+            f.attrs["sample_name"]    = self._sample_name
+            f.attrs["nx"]             = self._nx
+            f.attrs["ny"]             = self._ny
+            f.attrs["spacing_mm"]     = self._spacing
+            f.attrs["integration_us"] = self._spectro_integration
+            f.attrs["scans_to_avg"]   = self._spectro_scans_avg
+
+            f.create_dataset("x",          data=np.array(all_x))
+            f.create_dataset("y",          data=np.array(all_y))
+            f.create_dataset("wavelength", data=np.array(wavelengths))
+            f.create_dataset(
+                "intensity", data=np.array(all_intensities),
+                compression="gzip", compression_opts=4,
+            )
+
+        print(f"Saved {len(all_x)} points → {h5_path}")
+
+    def _saveHDF5_camera(self, all_x, all_y, all_images):
+        timestamp  = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+        name       = re.sub(r'[^\w\-]', '_', self._sample_name) or "sample"
+        output_dir = os.path.join("data", f"{name}_{timestamp}")
+        os.makedirs(output_dir, exist_ok=True)
+        h5_path    = os.path.join(output_dir, f"{name}_xwing_scan_camera.h5")
+
+        exposure_ms = self.tlCamera.exposure if self.tlCamera else 0
+
+        with h5py.File(h5_path, "w") as f:
+            f.attrs["sample_name"] = self._sample_name
+            f.attrs["nx"]          = self._nx
+            f.attrs["ny"]          = self._ny
+            f.attrs["spacing_mm"]  = self._spacing
+            f.attrs["exposure_ms"] = exposure_ms
+
+            f.create_dataset("x", data=np.array(all_x))
+            f.create_dataset("y", data=np.array(all_y))
+            f.create_dataset(
+                "images", data=np.stack(all_images, axis=0),
+                compression="gzip", compression_opts=4,
+            )
+
+        print(f"Saved {len(all_x)} images → {h5_path}")
