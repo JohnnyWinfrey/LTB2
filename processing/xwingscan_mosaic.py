@@ -60,9 +60,17 @@ def build_mosaic(x, y, images, pixels_per_mm):
         acc[yp:yp + H, xp:xp + W]   += images[i].astype(np.float64)
         count[yp:yp + H, xp:xp + W] += 1
 
-    mosaic = np.zeros((canvas_h, canvas_w), dtype=np.uint16)
+    averaged = np.zeros((canvas_h, canvas_w), dtype=np.float64)
     filled = count > 0
-    mosaic[filled] = (acc[filled] / count[filled]).astype(np.uint16)
+    averaged[filled] = acc[filled] / count[filled]
+
+    # Scale to full uint16 range so viewers don't show the image as black.
+    # The camera returns 12-bit values (0–4095) in a uint16 container; without
+    # rescaling most TIFF viewers render that as nearly black.
+    lo, hi = averaged[filled].min(), averaged[filled].max()
+    mosaic = np.zeros((canvas_h, canvas_w), dtype=np.uint16)
+    if hi > lo:
+        mosaic[filled] = ((averaged[filled] - lo) / (hi - lo) * 65535).astype(np.uint16)
 
     return mosaic
 
