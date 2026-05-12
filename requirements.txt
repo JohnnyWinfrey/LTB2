@@ -3,3 +3,4 @@ niscope
 pyserial
 pyqtgraph
 seabreeze
+pylablib
