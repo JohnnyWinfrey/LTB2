@@ -807,12 +807,14 @@ class TLCameraCore(QObject):
 
         def live_loop():
             try:
-                self._camera.start_acquisition(nframes=100)
+                self._camera.setup_acquisition(nframes=100)
+                self._camera.start_acquisition()
                 while self._is_live:
                     try:
-                        frame = self._camera.read_oldest_image(timeout=1.0)
+                        if not self._camera.wait_for_frame(timeout=1.0):
+                            continue
+                        frame = self._camera.read_oldest_image()
                     except Exception:
-                        # transient timeout or buffer miss — keep looping
                         continue
                     if frame is not None and self._image_provider is not None:
                         qimage = self._numpy_to_qimage(frame)
