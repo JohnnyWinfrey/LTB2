@@ -737,7 +737,7 @@ class TLCameraImageProvider(QQuickImageProvider):
         self._current_frame.fill(0)
 
     def requestImage(self, id, size, requestedSize):
-        return self._current_frame, self._current_frame.size()
+        return self._current_frame
 
     def update_frame(self, qimage):
         self._current_frame = qimage
@@ -809,7 +809,11 @@ class TLCameraCore(QObject):
             try:
                 self._camera.start_acquisition(nframes=100)
                 while self._is_live:
-                    frame = self._camera.read_oldest_image(timeout=0.5)
+                    try:
+                        frame = self._camera.read_oldest_image(timeout=1.0)
+                    except Exception:
+                        # transient timeout or buffer miss — keep looping
+                        continue
                     if frame is not None and self._image_provider is not None:
                         qimage = self._numpy_to_qimage(frame)
                         self._image_provider.update_frame(qimage)
