@@ -210,18 +210,41 @@ ApplicationWindow {
                             }
                             
                             // --- Stop Button ---
-                            
+
                             Button {
                                 anchors.horizontalCenter: parent.horizontalCenter
                                 width: 150
                                 height: 35
                                 text: "Stop"
                                 onClicked: SLIMBackend.stopScan()
-                                
+
                                 background: Rectangle {
                                     anchors.fill: parent
                                     color: "#d80000"
                                     border.width: 2
+                                }
+                            }
+
+                            Button {
+                                x: 0
+                                width: 80
+                                height: 24
+                                text: "Live View"
+                                onClicked: SpectroBackend.openLiveView()
+
+                                background: Rectangle {
+                                    anchors.fill: parent
+                                    color: "#6a3fa0"
+                                    border.width: 2
+                                    radius: 4
+                                }
+
+                                contentItem: Text {
+                                    anchors.centerIn: parent
+                                    text: parent.text
+                                    font.pixelSize: 10
+                                    font.family: "Courier"
+                                    color: "#ffffff"
                                 }
                             }
                         }

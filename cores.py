@@ -328,6 +328,7 @@ class SpectreCore(QObject):
     spec_Taken = Signal()
     scanParamsChanged = Signal()
     backgroundChanged = Signal()
+    liveSpectrumReady = Signal(object, object)
 
     def __init__(self):
         super().__init__()
@@ -346,9 +347,15 @@ class SpectreCore(QObject):
         self._region = "A"
         self._sampleName = "sample"
 
-        # Set limits on integration time and intensities based on spectrometer limits 
+        # Set limits on integration time and intensities based on spectrometer limits
         self.intMin, self.intMax = self.specInfo.features['spectrometer'][0].get_integration_time_micros_limits()
         self.maxIntensity = self.specInfo.features['spectrometer'][0].get_maximum_intensity()
+
+        self._live_view_window = None
+        self._live_view_curve = None
+        self._live_view_running = False
+        self._live_worker = None
+        self.liveSpectrumReady.connect(self._updateLivePlot)
 
         print("Spectrometer Found:", self.spec)
 
@@ -418,10 +425,56 @@ class SpectreCore(QObject):
     def checkOversaturation(self, maxMI):
         if (maxMI >= (self.maxIntensity-1)):
             print("WARNING: MEASUREMENT OVERSATURATED")
-            return True 
+            return True
         else:
-            return False 
-    
+            return False
+
+    # --- Live View ---
+
+    def _liveViewLoop(self):
+        while self._live_view_running:
+            try:
+                wavelengths, intensities = self.takeSpectrum()
+                self.liveSpectrumReady.emit(wavelengths, intensities)
+            except Exception as e:
+                print(f"Live view acquisition error: {e}")
+                break
+
+    def _updateLivePlot(self, wavelengths, intensities):
+        if self._live_view_curve is not None:
+            self._live_view_curve.setData(wavelengths, intensities)
+
+    @Slot()
+    def openLiveView(self):
+        if self._live_view_window is not None and self._live_view_window.isVisible():
+            self._live_view_window.activateWindow()
+            self._live_view_window.raise_()
+            return
+
+        win = pg.GraphicsLayoutWidget(title="Spectre Live View", show=True)
+        win.resize(700, 400)
+        win.setBackground('#1e1e1e')
+        plot = win.addPlot()
+        plot.setLabel('left', 'Counts')
+        plot.setLabel('bottom', 'Wavelength', units='nm')
+        plot.showGrid(x=True, y=True)
+        self._live_view_curve = plot.plot(pen=pg.mkPen(color='c', width=1.5))
+        self._live_view_window = win
+        win.closeEvent = lambda e: self._stopLiveView(e)
+
+        self._live_view_running = True
+        self._live_worker = Worker(self._liveViewLoop)
+        self._live_worker.start()
+        print("Live view opened")
+
+    def _stopLiveView(self, event=None):
+        self._live_view_running = False
+        self._live_view_window = None
+        self._live_view_curve = None
+        if event:
+            event.accept()
+        print("Live view closed")
+
 # --- Scan metadata properties ---
     @Property(float, notify=scanParamsChanged)
     def scanX(self):
