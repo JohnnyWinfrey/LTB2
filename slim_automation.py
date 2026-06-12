@@ -248,7 +248,7 @@ _scan = _SLIMScan(spectro, psg, psa)
 
 # ── Node cards ────────────────────────────────────────────────────────────────
 
-@core(stop=_scan.cancel)
+#@core(stop=_scan.cancel)
 def run_mueller():
     """
     Mueller matrix measurement (full 4×4 via rotating waveplates, 16 steps).
@@ -259,14 +259,14 @@ def run_mueller():
 
 
 @core(stop=_scan.cancel)
-def run_stokes():
+def stokes():
     """
     Stokes vector scan over PSG angles 0–90° in 10° steps, 4 PSA states each.
     """
     _scan.run_stokes()
 
 
-@core(stop=_scan.cancel)
+#@core(stop=_scan.cancel)
 def run_calibration():
     """
     Take a background spectrum for calibration (blocks until complete).
@@ -276,7 +276,7 @@ def run_calibration():
 
 
 @core(stop=_scan.cancel)
-def run_edge_lp():
+def planar_diffraction():
     """
     Planar diffraction edge scan using linear polarization states.
     Scans X position 0–20 mm in 0.5 mm steps, 3 PSG angles, 2 PSA angles.
@@ -285,7 +285,7 @@ def run_edge_lp():
 
 
 @core(stop=_scan.cancel)
-def run_edge_cp():
+def circ_pol():
     """
     Circular polarization edge scan (LH and RH circular states).
     Scans X position 0–20 mm in 0.5 mm steps.
