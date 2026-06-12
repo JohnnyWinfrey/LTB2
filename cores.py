@@ -71,7 +71,13 @@ class XWing(QObject):
         self.reference = None
         self.samples = []
         print("XWing online")
-        
+        self._show_panel()
+
+    def _show_panel(self):
+        from core_panels import XWingPanel
+        self._panel = XWingPanel(self)
+        self._panel.show()
+
 
     # --- X position as a float (if you ever want numeric binding) ---
     @Property(float, notify=xChanged)
@@ -252,6 +258,12 @@ class DeathStar(QObject):
         print(self.name, " DeathStar online")
         self.polarRotated.emit()
         self.wavePlateRotated.emit()
+        self._show_panel()
+
+    def _show_panel(self):
+        from core_panels import DeathStarPanel
+        self._panel = DeathStarPanel(self)
+        self._panel.show()
 
     # --- Wave Plate Anglular ---
     @Property(int, notify=wavePlateRotated)
@@ -351,6 +363,12 @@ class SpectreCore(QObject):
         self.maxIntensity = self.specInfo.features['spectrometer'][0].get_maximum_intensity()
 
         print("Spectrometer Found:", self.spec)
+        self._show_panel()
+
+    def _show_panel(self):
+        from core_panels import SpectrePanel
+        self._panel = SpectrePanel(self)
+        self._panel.show()
 
     # --- Integration Time  ---
     @Property(int, notify=int_Time_Changed)
@@ -498,6 +516,12 @@ class Cornerstone(QObject):
         self.currentGrating = 3
         self.currentWavelength = 0.0
         print("Cornerstone online")
+        self._show_panel()
+
+    def _show_panel(self):
+        from core_panels import CornerstonePanel
+        self._panel = CornerstonePanel(self)
+        self._panel.show()
     
     @Property(str, notify=waveChanged)
     def wavePos(self):
@@ -707,6 +731,12 @@ class PMTShield(QObject):
         self._gain = 0.0  # Make it a float
         self.pmt = ArduinoClient("COM4", 115200)
         print("PMT Gain Shield Online")
+        self._show_panel()
+
+    def _show_panel(self):
+        from core_panels import PMTPanel
+        self._panel = PMTPanel(self)
+        self._panel.show()
         
 
     # --- Current gain value ---
