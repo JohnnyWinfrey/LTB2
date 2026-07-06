@@ -9,7 +9,7 @@ class PowerMeter:
         self.rm    = None
         self.instr = None
 
-    def open(self):
+    def open(self, wl):
         """Open the resource manager + instrument and apply one-time config."""
         # Import lazily so this module still imports on a machine without
         # pyvisa (the fake path never touches it).
@@ -30,8 +30,8 @@ class PowerMeter:
 
         # turn on auto-ranging
         self.instr.write("SENS:RANGE:AUTO ON")
-        # set calibration wavelength to the 488 nm Ar-ion line
-        self.instr.write("SENS:CORR:WAV 488")
+
+        self.instr.write(f"SENS:CORR:WAV {wl}")
         # set units to Watts
         self.instr.write("SENS:POW:UNIT W")
         # set averaging to 1000 points (COUN is the count subcommand)

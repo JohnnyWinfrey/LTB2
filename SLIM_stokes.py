@@ -38,6 +38,9 @@ class SLIMStokes():
                           "CW_Theta": stokes_CW[s], "CP_Theta": stokes_IP[s]}
                 all_data.append((angles, np.array(intensities), np.array(wavelengths)))
 
+        self.PSG_DeathStar.home()
+        self.PSA_DeathStar.home()
+
         # Save everything collected (skip if stopped before the first scan).
         if all_data:
             s = self.spectro
@@ -50,7 +53,7 @@ class SLIMStokes():
 if __name__ == "__main__":
     from auto_gui import run_gui, LivePlot
 
-    sim = 1
+    sim = 0
     if sim:
         from hardware import FakeDeathStar as DeathStar, FakeSpectreCore as Spectro
         psg = DeathStar(id="PSG")

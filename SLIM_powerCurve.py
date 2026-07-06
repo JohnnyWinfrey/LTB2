@@ -6,12 +6,11 @@ import pandas as pd
 from slim_helpers import progressBarCoolStyle
 
 
-class SLIMCalibration():
+class SLIMPowerCurve():
 
-    def __init__(self, PSG, PSA, powerMeter):
+    def __init__(self, PSG, powerMeter):
         super().__init__()
         self.PSG_DeathStar = PSG
-        self.PSA_DeathStar = PSA
         self.powerMeter    = powerMeter
         # Seconds to wait after each move before reading (0 in sim mode).
 
@@ -20,32 +19,31 @@ class SLIMCalibration():
     # ──────────────────────────────────────────────────────────────────────
     # Scan sequences
     # ──────────────────────────────────────────────────────────────────────
-    def _dualRotatingWaveplate(self):
-        psg_waveplate_angles = np.linspace(0, 180, 181)
+    def _powerCurve(self):
+        psg_angles = np.linspace(0, 90, 10)
         intensities = []
-        psa_waveplate_angles = []
+        psa_angles = []
         try:
             # Open the meter once at the start of the run.
-            self.powerMeter.open()
-            for i in range(len(psg_waveplate_angles)):
+            self.powerMeter.open(488)
+            for i in range(len(psg_angles)):
                 # Cooperative stop: auto_gui's Stop button sets self._stop.
                 if getattr(self, "_stop", False):
                     break
                 print(i)
-                psa_waveplate_angles.append(psg_waveplate_angles[i] * 3)
-                self.PSG_DeathStar.setPosition("0", str(psg_waveplate_angles[i]))
-                self.PSA_DeathStar.setPosition("0", str(psa_waveplate_angles[i]))
+                self.PSG_DeathStar.setPosition(str(psg_angles[i]), str(psg_angles[i]))
                 time.sleep(1)
 
                 intensities.append(self.powerMeter.measure())  # single power reading
-                progressBarCoolStyle(len(psg_waveplate_angles), len(psa_waveplate_angles))
+                progressBarCoolStyle(len(psg_angles), len(psa_angles))
 
                 # Live view: safe to call from this worker thread -- LivePlot
                 # marshals the point to the GUI thread. No-op if none attached.
                 
-                self.plotter.append(psg_waveplate_angles[i], intensities[-1])
+                self.plotter.append(psg_angles[i], intensities[-1])
 
         finally:
+            self.PSG_DeathStar.home()
             # Always release the meter, even if a scan raised.
             self.powerMeter.close()
 
@@ -54,11 +52,10 @@ class SLIMCalibration():
         n = len(intensities)
         pd.DataFrame({
             'Intensities': intensities,
-            'PSG_Angles': psg_waveplate_angles[:n],
-            'PSA_Angles': psa_waveplate_angles[:n],
-        }).to_csv('output.csv', index=False)
+            'PSG_Angles': psg_angles[:n],
+        }).to_csv('calibration/powerCurve.csv', index=False)
 
-        return (intensities, psg_waveplate_angles, psa_waveplate_angles)
+        return (intensities, psg_angles)
 
 
 if __name__ == "__main__":
@@ -69,23 +66,21 @@ if __name__ == "__main__":
     if sim:
         from hardware import FakeDeathStar as DeathStar, FakePowerMeter as Meter
         psg = DeathStar(id="PSG")
-        psa = DeathStar(id="PSA")
         meter = Meter()
     else:
         from hardware import DeathStar
         from hardware import PowerMeter as Meter
         psg = DeathStar("COM10", False, "PSG")
-        psa = DeathStar("COM9", True, "PSA")
         meter = Meter()
 
-    slim = SLIMCalibration(psg, psa, meter)
+    slim = SLIMPowerCurve(psg, meter)
 
     slim.plotter = LivePlot(title="SLIM sweep", xlabel="PSG angle (deg)",
                             ylabel="intensity", mode="append")
 
     run_gui(
         automation=slim,
-        run=slim._dualRotatingWaveplate,
-        hardware=[psg, psa, meter],
+        run=slim._powerCurve,
+        hardware=[psg, meter],
         title="SLIM Calibration",
     )

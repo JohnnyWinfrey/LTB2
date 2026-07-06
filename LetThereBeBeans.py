@@ -5,6 +5,8 @@ from auto_gui import run_gui
 
 
 class Automations:
+    def SLIM_PowerCurve(self):
+        self._run("SLIM_powerCurve.py")
     def SLIM_Calibration(self):  
         self._run("SLIM_calibration.py")
 
