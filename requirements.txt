@@ -1,5 +1,15 @@
+# Core: GUI harness + sim mode + data (needed on any machine)
 PySide6
-niscope
-pyserial
 pyqtgraph
-seabreeze
+numpy
+h5py
+pandas
+
+# Analysis (processing/xwingscan_heatmap.py)
+matplotlib
+
+# Real hardware only (sim = 0); not needed to run scripts with the fakes
+pyserial      # Arduino serial: DeathStar / XWing / PMT stages
+niscope       # NI digitizer (Digitizer.measure)
+seabreeze     # spectrometer (SpectreCore)
+pyvisa        # Thorlabs power meter (PowerMeter)

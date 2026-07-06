@@ -1,0 +1,37 @@
+/* Gruvbox: warm retro earth tones */
+QWidget {
+    background-color: #282828;
+    color: #ebdbb2;
+    font-size: 13px;
+}
+QGroupBox {
+    border: 1px solid #504945;
+    border-radius: 6px;
+    margin-top: 10px;
+    padding: 8px;
+}
+QGroupBox::title {
+    subcontrol-origin: margin;
+    left: 10px;
+    padding: 0 4px;
+    color: #fabd2f;
+}
+QPushButton {
+    background-color: #3c3836;
+    color: #ebdbb2;
+    border: 1px solid #504945;
+    border-radius: 4px;
+    padding: 6px 10px;
+}
+QPushButton:hover   { background-color: #504945; }
+QPushButton:pressed { background-color: #665c54; }
+QPushButton:disabled { color: #7c6f64; border-color: #3c3836; }
+QLineEdit {
+    background-color: #32302f;
+    color: #ebdbb2;
+    border: 1px solid #504945;
+    border-radius: 4px;
+    padding: 4px;
+}
+QLineEdit:focus { border: 1px solid #83a598; }
+QScrollArea { border: none; }
