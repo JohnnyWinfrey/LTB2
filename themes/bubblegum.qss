@@ -1,0 +1,37 @@
+/* Bubblegum: pastel pink, light and cheerful */
+QWidget {
+    background-color: #ffe0f0;
+    color: #6a2a52;
+    font-size: 13px;
+}
+QGroupBox {
+    border: 1px solid #ff8fcf;
+    border-radius: 8px;
+    margin-top: 10px;
+    padding: 8px;
+}
+QGroupBox::title {
+    subcontrol-origin: margin;
+    left: 10px;
+    padding: 0 4px;
+    color: #d94f9a;
+}
+QPushButton {
+    background-color: #ff9fd6;
+    color: #4a1a38;
+    border: 1px solid #d94f9a;
+    border-radius: 10px;
+    padding: 6px 12px;
+}
+QPushButton:hover   { background-color: #ffb3e0; }
+QPushButton:pressed { background-color: #f582c4; }
+QPushButton:disabled { color: #b98aa8; border-color: #e6a8cd; }
+QLineEdit {
+    background-color: #fff2f9;
+    color: #6a2a52;
+    border: 1px solid #ff8fcf;
+    border-radius: 8px;
+    padding: 4px;
+}
+QLineEdit:focus { border: 1px solid #d94f9a; }
+QScrollArea { border: none; }
