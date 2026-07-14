@@ -13,7 +13,7 @@ def progressBarCoolStyle(numSteps, currentStep):
 
 
 def saveHDF5(all_data, scanType, name="sample", region="A", side="X",
-             scanX=0.0, scanY=0.0, integration=100000):
+             scanX=0.0, scanY=0.0, integration=100000, sta=1):
     """
     Save SLIM scan data to HDF5.
 
@@ -49,6 +49,7 @@ def saveHDF5(all_data, scanType, name="sample", region="A", side="X",
         f.attrs["x"]                   = scanX
         f.attrs["y"]                   = scanY
         f.attrs["integration_time_us"] = integration
+        f.attrs["scansToAvg"]          = sta
 
         # Wavelength axis
         f.create_dataset("wavelength", data=wavelengths)

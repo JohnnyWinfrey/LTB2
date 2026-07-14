@@ -45,15 +45,16 @@ class SLIMStokes():
         if all_data:
             s = self.spectro
             saveHDF5(all_data, "stokesScan",
-                     name=s._sampleName, region=s._region, side=s._side,
-                     scanX=s._scanX, scanY=s._scanY, integration=s.intTime)
+                     name=s.sampleName, region=s.region, side=s.side,
+                     scanX=s.scanX, scanY=s.scanY, integration=s.intTime,
+                     sta=s.scansToAvg)
         return all_data
 
 
 if __name__ == "__main__":
     from auto_gui import run_gui, LivePlot
 
-    sim = 0
+    sim = 1
     if sim:
         from hardware import FakeDeathStar as DeathStar, FakeSpectreCore as Spectro
         psg = DeathStar(id="PSG")

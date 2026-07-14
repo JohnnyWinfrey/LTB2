@@ -43,8 +43,9 @@ class SLIMEdgeCP():
         if all_data:
             s = self.spectro
             saveHDF5(all_data, "CPscan",
-                     name=s._sampleName, region=s._region, side=s._side,
-                     scanX=s._scanX, scanY=s._scanY, integration=s.intTime)
+                     name=s.sampleName, region=s.region, side=s.side,
+                     scanX=s.scanX, scanY=s.scanY, integration=s.intTime,
+                     sta=s.scansToAvg)
         return all_data
 
 

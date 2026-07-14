@@ -367,11 +367,11 @@ class SpectreCore(_SpectrometerLiveView):
         self._bgCounts = 0.0
 
         # Scan metadata
-        self._scanX = 0.0
-        self._scanY = 0.0
-        self._side = "X"
-        self._region = "A"
-        self._sampleName = "sample"
+        self.scanX = 0.0
+        self.scanY = 0.0
+        self.side = "X"
+        self.region = "A"
+        self.sampleName = "sample"
 
         feat = self.specInfo.features['spectrometer'][0]
         self.intMin, self.intMax = feat.get_integration_time_micros_limits()
@@ -475,11 +475,11 @@ class FakeSpectreCore(_SpectrometerLiveView):
         self._bgCounts = 0.0
 
         # Scan metadata (same fields SpectreCore carries)
-        self._scanX = 0.0
-        self._scanY = 0.0
-        self._side = "X"
-        self._region = "A"
-        self._sampleName = "sample"
+        self.scanX = 0.0
+        self.scanY = 0.0
+        self.side = "X"
+        self.region = "A"
+        self.sampleName = "sample"
 
         # Fake spectrometer limits
         self.intMin = 1000
