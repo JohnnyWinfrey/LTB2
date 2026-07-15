@@ -3,8 +3,6 @@ import time
 import numpy as np
 import pandas as pd
 
-from slim_helpers import progressBarCoolStyle
-
 
 class SLIMCalibration():
 
@@ -13,7 +11,6 @@ class SLIMCalibration():
         self.PSG_DeathStar = PSG
         self.PSA_DeathStar = PSA
         self.powerMeter    = powerMeter
-        # Seconds to wait after each move before reading (0 in sim mode).
 
         print("SLIM AUTOMATION READY")
 
@@ -21,7 +18,7 @@ class SLIMCalibration():
     # Scan sequences
     # ──────────────────────────────────────────────────────────────────────
     def _dualRotatingWaveplate(self):
-        psg_waveplate_angles = np.linspace(0, 180, 181)
+        psg_waveplate_angles = np.linspace(0, 180, 46)
         intensities = []
         psa_waveplate_angles = []
         try:
@@ -38,7 +35,11 @@ class SLIMCalibration():
                 time.sleep(1)
 
                 intensities.append(self.powerMeter.measure())  # single power reading
-                progressBarCoolStyle(len(psg_waveplate_angles), len(psa_waveplate_angles))
+                
+                stepTime = 5
+                totalSteps = len(psg_waveplate_angles)
+                
+                self.progress(i, totalSteps, stepTime)
 
                 # Live view: safe to call from this worker thread -- LivePlot
                 # marshals the point to the GUI thread. No-op if none attached.
@@ -65,7 +66,7 @@ if __name__ == "__main__":
     import sys
     from auto_gui import run_gui, LivePlot
 
-    sim = 0#"--sim" in sys.argv
+    sim = 1#"--sim" in sys.argv
     if sim:
         from hardware import FakeDeathStar as DeathStar, FakePowerMeter as Meter
         psg = DeathStar(id="PSG")

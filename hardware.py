@@ -423,32 +423,32 @@ class SpectreCore(_SpectrometerLiveView):
 
     def setScanX(self, value):
         try:
-            self._scanX = float(value)
+            self.scanX = float(value)
         except ValueError:
             return
-        print(f"Scan X -> {self._scanX}")
+        print(f"Scan X -> {self.scanX}")
 
     def setScanY(self, value):
         try:
-            self._scanY = float(value)
+            self.scanY = float(value)
         except ValueError:
             return
-        print(f"Scan Y -> {self._scanY}")
+        print(f"Scan Y -> {self.scanY}")
 
     def setSide(self, value):
-        self._side = value
-        print(f"Side -> {self._side}")
+        self.side = value
+        print(f"Side -> {self.side}")
 
     def setRegion(self, value):
-        self._region = value
-        print(f"Region -> {self._region}")
+        self.region = value
+        print(f"Region -> {self.region}")
 
     def setSampleName(self, value):
-        self._sampleName = value
-        print(f"Sample Name -> {self._sampleName}")
+        self.sampleName = value
+        print(f"Sample Name -> {self.sampleName}")
 
     def getBackgroundCounts(self):
-        return f"{self._bgCounts:.2f}"
+        return f"{self.bgCounts:.2f}"
 
     def _checkOversaturation(self, maxMI):
         if maxMI >= (self.maxIntensity - 1):
@@ -472,7 +472,7 @@ class FakeSpectreCore(_SpectrometerLiveView):
         self.intTime = 500000
         self.background = 0.0
         self.scansToAvg = 1
-        self._bgCounts = 0.0
+        self.bgCounts = 0.0
 
         # Scan metadata (same fields SpectreCore carries)
         self.scanX = 0.0
@@ -544,8 +544,8 @@ class FakeSpectreCore(_SpectrometerLiveView):
         sorted_bg = sorted(self.background, reverse=True)
         self._checkOversaturation(sorted_bg[0])
         top_10_count = max(1, len(sorted_bg) // 10)
-        self._bgCounts = sum(sorted_bg[:top_10_count]) / top_10_count
-        print(f"Background updated! Avg top 10%: {self._bgCounts:.2f}")
+        self.bgCounts = sum(sorted_bg[:top_10_count]) / top_10_count
+        print(f"Background updated! Avg top 10%: {self.bgCounts:.2f}")
 
     def takeSpectrum(self):
         wavelengths = self._wavelengths
@@ -557,32 +557,32 @@ class FakeSpectreCore(_SpectrometerLiveView):
 
     def setScanX(self, value):
         try:
-            self._scanX = float(value)
+            self.scanX = float(value)
         except ValueError:
             return
-        print(f"Scan X -> {self._scanX}")
+        print(f"Scan X -> {self.scanX}")
 
     def setScanY(self, value):
         try:
-            self._scanY = float(value)
+            self.scanY = float(value)
         except ValueError:
             return
-        print(f"Scan Y -> {self._scanY}")
+        print(f"Scan Y -> {self.scanY}")
 
     def setSide(self, value):
-        self._side = value
-        print(f"Side -> {self._side}")
+        self.side = value
+        print(f"Side -> {self.side}")
 
     def setRegion(self, value):
-        self._region = value
-        print(f"Region -> {self._region}")
+        self.region = value
+        print(f"Region -> {self.region}")
 
     def setSampleName(self, value):
-        self._sampleName = value
-        print(f"Sample Name -> {self._sampleName}")
+        self.sampleName = value
+        print(f"Sample Name -> {self.sampleName}")
 
     def getBackgroundCounts(self):
-        return f"{self._bgCounts:.2f}"
+        return f"{self.bgCounts:.2f}"
 
     def _checkOversaturation(self, maxMI):
         if maxMI >= (self.maxIntensity - 1):

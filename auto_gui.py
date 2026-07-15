@@ -23,6 +23,7 @@ from PySide6.QtGui import QMovie, QPainter
 from PySide6.QtWidgets import (
     QApplication, QWidget, QPushButton, QLabel, QLineEdit,
     QVBoxLayout, QHBoxLayout, QGroupBox, QFormLayout, QScrollArea,
+    QProgressBar,
 )
 
 
@@ -32,12 +33,12 @@ from PySide6.QtWidgets import (
 # new .qss file in themes/. Bundled:
 #   "dark", "light", "ltb2"        -- neutral / the old SLIM look
 #   "synthwave", "matrix", "dracula", "nord", "gruvbox", "bubblegum", "hotdog"
-THEME = ""
+THEME = "gruvbox"
 
 # Optional wallpaper drawn (stretched) behind the panels: a file in themes/
 # (png / jpg / gif). NOTE: GIFs show their FIRST FRAME only -- Qt stylesheets
 # don't animate. Set to None for no background.
-BACKGROUND = "rat.jpg"
+BACKGROUND = ""
 
 
 def _apply_theme(app):
@@ -211,6 +212,46 @@ def _setter_group(name, method, params):
     return box
 
 
+class Progress(QObject):
+    """Thread-safe progress reporter backing the Start panel's bar.
+
+    Same hand-off as LivePlot: the automation runs on a worker thread and may
+    not touch widgets, so reporting a step emits a signal that Qt delivers on
+    the GUI thread, where the bar is actually redrawn.
+
+    ControlWindow attaches one to the automation as ``.progress``, so a scan
+    loop just calls it::
+
+        for i, angle in enumerate(angles):
+            ...
+            self.progress(i + 1, len(angles))            # bar + "12/181"
+            self.progress(i + 1, len(angles), "settling")  # with a message
+    """
+    _tick = Signal(int, int, float)
+
+    def __init__(self, bar, label):
+        super().__init__()
+        self._bar = bar
+        self._label = label
+        self._tick.connect(self._on_tick)
+
+    # --- called from the automation (any thread) ---
+    def __call__(self, current, total, stepTime):
+        self._tick.emit(int(current), int(total), float(stepTime))
+
+    def reset(self):
+        self._tick.emit(0, 0, 0)
+
+    # --- always runs on the GUI thread ---
+    def _on_tick(self, current, total, stepTime):
+        self._bar.setRange(0, total)
+        self._bar.setValue(min(current, total))
+        if total != 0:
+            _pComplete = 1-((current+1)/total)
+            text = f"~{round(_pComplete*stepTime)} min"
+            self._label.setText(f"{text}")
+
+
 class ControlWindow(QWidget):
     """Start/Stop panel that runs ``run`` on a background thread."""
 
@@ -227,6 +268,19 @@ class ControlWindow(QWidget):
         self.status = QLabel("Idle")
         self.status.setAlignment(Qt.AlignCenter)
 
+        self.bar = QProgressBar()
+        self.bar.setRange(0, 1)
+        self.bar.setValue(0)
+        self.bar.setTextVisible(False)
+
+        self.step_label = QLabel("")
+        self.step_label.setAlignment(Qt.AlignCenter)
+        self.step_label.setStyleSheet("font-family: monospace;")
+
+        # The automation reports progress through this; harmless if it never does.
+        self.progress = Progress(self.bar, self.step_label)
+        setattr(self.automation, "progress", self.progress)
+
         self.start_btn = QPushButton("Start")
         self.stop_btn = QPushButton("Stop")
         self.stop_btn.setEnabled(False)
@@ -240,6 +294,8 @@ class ControlWindow(QWidget):
 
         lay.addLayout(btn_row)
         lay.addWidget(self.status)
+        lay.addWidget(self.bar)
+        lay.addWidget(self.step_label)
         self.resize(260, self.sizeHint().height())
 
     def _start(self):
@@ -247,6 +303,7 @@ class ControlWindow(QWidget):
             return
         # Cooperative-stop flag; loops opt in with `if self._stop: break`.
         setattr(self.automation, "_stop", False)
+        self.progress.reset()
 
         self.worker = _Worker(self.run_func)
         self.worker.finished.connect(self._on_finished)
