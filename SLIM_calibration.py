@@ -18,7 +18,7 @@ class SLIMCalibration():
     # Scan sequences
     # ──────────────────────────────────────────────────────────────────────
     def _dualRotatingWaveplate(self):
-        psg_waveplate_angles = np.linspace(0, 180, 46)
+        psg_waveplate_angles = np.linspace(0, 360, 61)
         intensities = []
         psa_waveplate_angles = []
         try:
@@ -29,7 +29,7 @@ class SLIMCalibration():
                 if getattr(self, "_stop", False):
                     break
                 print(i)
-                psa_waveplate_angles.append(psg_waveplate_angles[i] * 3)
+                psa_waveplate_angles.append(psg_waveplate_angles[i] * 5)
                 self.PSG_DeathStar.setPosition("0", str(psg_waveplate_angles[i]))
                 self.PSA_DeathStar.setPosition("0", str(psa_waveplate_angles[i]))
                 time.sleep(1)
