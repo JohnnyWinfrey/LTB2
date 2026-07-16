@@ -13,9 +13,12 @@ class SLIMEdgeLP():
 
     def _edgeLP(self):
         all_data = []
-        for x in range(0, 41, 1):                 # 0-20 mm in 0.5 mm steps
+        numSteps = 41
+        self.avgStepTime = []
+        for x in range(numSteps):                 # 0-20 mm in 0.5 mm steps
             if getattr(self, "_stop", False):
                 break
+            t0 = time.time()
             for angleStep in range(0, 136, 45):   # PSG linear polarization states
                 if getattr(self, "_stop", False):
                     break
@@ -26,6 +29,7 @@ class SLIMEdgeLP():
                     T2 = float(x / 2)
                     self.PSG_DeathStar.setPosition(str(angleStep), str(angleStep), "0")
                     self.PSA_DeathStar.setPosition(str(analyzeStep), str(analyzeStep), str(T2))
+                    print(f"T2={T2}")
                     time.sleep(1)
 
                     wavelengths, intensities = self.spectro.takeSpectrum()
@@ -35,6 +39,11 @@ class SLIMEdgeLP():
                     angles = {"IW_Theta": angleStep, "IP_Theta": angleStep,
                               "CW_Theta": analyzeStep, "CP_Theta": analyzeStep}
                     all_data.append((angles, np.array(intensities), np.array(wavelengths)))
+
+            # Progress bar stuff
+            t1 = time.time()
+            self.avgStepTime.append(t1-t0)
+            self.progress(x, numSteps, np.average(self.avgStepTime))
 
         self.PSA_DeathStar.resetHome()
         self.PSA_DeathStar.zHome()

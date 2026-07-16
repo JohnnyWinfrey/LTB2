@@ -13,7 +13,7 @@ class SLIMDRMCalibration():
         self.PSA_DeathStar = PSA
         self.spectro       = spectrometer
         self.plotter       = None   # optional auto_gui.LivePlot (replace mode)
-        self.DeathStarWait = 1
+        self.DeathStarWait = 2
 
         print("SLIM AUTOMATION READY")
 
@@ -42,7 +42,7 @@ class SLIMDRMCalibration():
                 if self.plotter is not None:
                     self.plotter.setData(wavelengths, intensities)   # live spectrum
 
-                stepTime = self.DeathStarWait + (self.spectro.intTime/1000000)
+                stepTime = self.DeathStarWait + (self.spectro.scansToAvg*self.spectro.intTime/1000000)+1
                 totalSteps = len(psg_waveplate_angles)
                 self.progress(i, totalSteps, stepTime)
 

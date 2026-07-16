@@ -13,20 +13,23 @@ class SLIMEdgeCP():
 
     def _edgeCP(self):
         all_data = []
-        for x in range(0, 41, 1):                  # 0-20 mm in 0.5 mm steps
+        numSteps = 41
+        self.avgStepTime = []
+        for x in range(numSteps):                  # 0-20 mm in 0.5 mm steps
             if getattr(self, "_stop", False):
                 break
+            t0=time.time()
             for angleStep in range(-45, 46, 90):   # LH / RH circular states
                 if getattr(self, "_stop", False):
                     break
-                for analyzeStep in range(-45, 91, 45):
+                for analyzeStep in range(0, 91, 90):
                     if getattr(self, "_stop", False):
                         break
 
                     T2 = float(x / 2)
                     self.PSG_DeathStar.setPosition(str(angleStep), "0", "0")
                     self.PSA_DeathStar.setPosition(str(analyzeStep), str(analyzeStep), str(T2))
-                    time.sleep(1)
+                    #time.sleep(1)
 
                     wavelengths, intensities = self.spectro.takeSpectrum()
                     if self.plotter is not None:
@@ -35,7 +38,9 @@ class SLIMEdgeCP():
                     angles = {"IW_Theta": 0, "IP_Theta": angleStep,
                               "CW_Theta": analyzeStep, "CP_Theta": analyzeStep}
                     all_data.append((angles, np.array(intensities), np.array(wavelengths)))
-
+            t1=time.time()
+            self.avgStepTime.append(t1-t0)
+            self.progress(x, numSteps, np.average(self.avgStepTime))
         self.PSA_DeathStar.resetHome()
         self.PSA_DeathStar.zHome()
         self.PSG_DeathStar.resetHome()
@@ -72,5 +77,5 @@ if __name__ == "__main__":
         automation=slim,
         run=slim._edgeCP,
         hardware=[psg, psa, spectro],
-        title="SLIM Circular Polarization (CP)",
+        title="SLIM CircPol",
     )

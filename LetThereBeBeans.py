@@ -18,7 +18,7 @@ class Automations:
         
     def SLIM_PlanarDiffraction(self):       
         self._run("SLIM_planarDiffraction.py")
-
+ 
     def SLIM_CircPol(self):       
         self._run("SLIM_circPol.py")
 

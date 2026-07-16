@@ -130,31 +130,6 @@ class FakeDeathStar:
         return f"P={self._thetaP % 360:.2f}   W={self._thetaW % 360:.2f}"
 
 
-# ──────────────────────────────────────────────────────────────────────────
-# QML-free hardware ports (for auto_gui)
-# ──────────────────────────────────────────────────────────────────────────
-# Plain-Python versions of the QObject devices in cores.py. Same real control
-# logic (they drive ArduinoClient / CornerstoneClient / the spectrometer), but
-# with every trace of Qt/QML removed:
-#
-#   * they inherit from `object`, not QObject, so the only public methods are
-#     the ones written here -- auto_gui turns each into a control and has no
-#     inherited QObject methods (deleteLater, blockSignals, ...) to filter;
-#   * no Signal / .emit() calls (those only existed to notify QML);
-#   * no @Property accessors -- the current state the UI used to bind to is
-#     instead readable through get*() methods, which auto_gui renders as a
-#     "read" button + a value label.
-#
-# auto_gui's control mapping, for reference while reading these:
-#   0-arg method                -> a button (e.g. home, openShutter)
-#   0-arg method named get*/read/measure -> a "read" button + value label
-#   method with arguments       -> one text field per arg + a call button
-#
-# Transport clients are imported lazily inside __init__ (like PowerMeter above)
-# so `import hardware` still works on a machine with no instruments/drivers;
-# constructing a device, of course, needs the real hardware attached.
-
-
 class DeathStar:
     """Rotating polarizer + waveplate stage. QML-free port of cores.DeathStar.
 
@@ -468,7 +443,7 @@ class FakeSpectreCore(_SpectrometerLiveView):
     its auto_gui window be exercised on a laptop with nothing plugged in.
     """
 
-    def __init__(self, num_pixels=2048):
+    def __init__(self, num_pixels=1044):
         self.intTime = 500000
         self.background = 0.0
         self.scansToAvg = 1
@@ -487,7 +462,7 @@ class FakeSpectreCore(_SpectrometerLiveView):
         self.maxIntensity = 65535
 
         # Synthetic wavelength axis (nm): Ocean-style visible/NIR range.
-        self._wavelengths = np.linspace(340.0, 1000.0, num_pixels)
+        self._wavelengths = np.linspace(398.0, 1100.0, num_pixels)
         print("FakeSpectreCore online (synthetic spectra)")
 
     # --- synthetic-frame helpers --------------------------------------------
