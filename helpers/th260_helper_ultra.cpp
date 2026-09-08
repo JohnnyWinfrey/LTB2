@@ -1,535 +1,254 @@
-// FLIM.cpp : This file contains the 'main' function. Program execution begins and ends there.
+// th260_helper_ultra.cpp -- TimeHarp 260 TCSPC helper.
 //
+// Line protocol over stdin/stdout, one command in -> one response line out,
+// matching hardware_controllers._LineProcess:
+//
+//   init                     -> OK RES=<ps> CH=<n> LEN=<histlen>
+//   info                     -> OK RES=<ps> CH=<n> LEN=<histlen>
+//   measure <tacq_ms> <bins> -> OK RES=<ps> CH=<n> LEN=<histlen> SYNC=<hz>
+//                                  CR=<c0>,<c1> OVF=<0|1>
+//                                  DATA=<ch0 bins,...>;<ch1 bins,...>
+//   exit                     -> OK
+//
+// Anything else -> "ERR <reason>". The histogram is returned to Python, which
+// owns saving it (see th260_helpers.saveTCSPCHDF5); this helper writes no files.
+//
+// stdout is the protocol channel and carries NOTHING but response lines --
+// every diagnostic goes to stderr, or it would desync the client.
+//
+// Build: see helpers/build.sh (mingw cross-build for Windows, or a native
+// build against th260_stub.cpp for local protocol testing).
 
-#pragma warning(disable : 4996)
-
+#include <cstdio>
+#include <cstring>
 #include <iostream>
-#include <chrono>
-#include <thread>
-#include <windows.h>
-#include <dos.h>
-#include <stdio.h>
-#include <conio.h>
-#include <stdlib.h>
-#include <string.h>
-#include <vector>
 #include <sstream>
-#include <stdlib.h>
-#include <sys/types.h>
-#include <sys/stat.h>
-extern "C"
-{
-#include <errorcodes.h>
-#include <th260defin.h>
-#include <th260lib.h>
-#include <Thorlabs.MotionControl.KCube.Piezo.h>
+#include <string>
+
+#include "th260_compat.h"
+
+// ---------------------------------------------------------------------------
+// Acquisition settings. Compile-time, as before -- only tacq and bins are
+// settable at runtime.
+// ---------------------------------------------------------------------------
+static int Binning = 3;      // 0 => 0.025 ns bins, 1 => 0.05, 2 => 0.1, 3 => 0.2
+static int Offset = 0;
+static int SyncOffset = 25000;
+static int SyncDivider = 1;
+
+// TimeHarp 260 P boards (picosecond)
+static int SyncCFDZeroCross = -10;
+static int SyncCFDLevel = -100;
+static int InputCFDZeroCross = -10;
+static int InputCFDLevel = -30;  // -30 for monochromator/PMT, -100 for SPAD
+
+// TimeHarp 260 N boards (nanosecond)
+static int SyncTriggerEdge = 0;
+static int SyncTriggerLevel = -50;
+static int InputTriggerEdge = 0;
+static int InputTriggerLevel = -50;
+
+// ---------------------------------------------------------------------------
+// Device state
+// ---------------------------------------------------------------------------
+static unsigned int counts[MAXINPCHAN][MAXHISTLEN];
+
+static int devIdx = -1;      // index of the opened device, -1 => not open
+static int NumChannels = 0;
+static int HistLen = 0;
+static double Resolution = 0.0;
+
+static int Syncrate = 0;
+static int Countrate[MAXINPCHAN];
+static bool Overflow = false;
+
+static char HW_Model[16];
+static char HW_Partno[8];
+static char HW_Version[16];
+static char HW_Serial[8];
+
+static std::string lastError;
+
+// Record a library failure as a readable message and bail out of the caller.
+static bool fail(const char* what, int code) {
+    char errstring[40] = {0};
+    TH260_GetErrorString(errstring, code);
+    std::ostringstream os;
+    os << what << " failed (" << code << ": " << errstring << ")";
+    lastError = os.str();
+    std::fprintf(stderr, "%s\n", lastError.c_str());
+    return false;
 }
 
-using namespace std;
-using std::to_string;
+#define TH_TRY(expr, what)                     \
+    do {                                       \
+        int rc_ = (expr);                      \
+        if (rc_ < 0) return fail(what, rc_);   \
+    } while (0)
 
-unsigned int counts[MAXINPCHAN][MAXHISTLEN]; //array to store data
-int Tacq = 5000; //Measurement time in millisec, you can change this
-int errorCount = 0;
-
-int dev[MAXDEVNUM];
-int found = 0;
-FILE* fpout;
-int retcode;
-int ctcstatus;
-char LIB_Version[8];
-char HW_Model[16];
-char HW_Partno[8];
-char HW_Version[16];
-char HW_Serial[8];
-char Errorstring[40];
-int NumChannels;
-int HistLen;
-int Binning = 3; // 0 => bin width of 0.025 ns, 1 => bin width of 0.05 ns, 2 => bin width of 0.1 ns, 3 => bin width of 0.2 ns
-int Offset = 0;
-int SyncOffset = 25000;
-//int Tacq = 5000; //Measurement time in millisec, you can change this
-int SyncDivider = 1; //you can change this
-
-//These settings will apply for TimeHarp 260 P boards
-int SyncCFDZeroCross = -10; //you can change this
-int SyncCFDLevel = -100; //you can change this
-int InputCFDZeroCross = -10; //you can change this
-int InputCFDLevel = -30; //you can change this (-30 for monochromator/pmt, -100 for SPAD)
-
-//These settings will apply for TimeHarp 260 N boards
-int SyncTiggerEdge = 0; //you can change this
-int SyncTriggerLevel = -50; //you can change this
-int InputTriggerEdge = 0; //you can change this......
-int InputTriggerLevel = -50; //you can change this
-
-double Resolution;
-int Syncrate;
-int Countrate;
-double Integralcount;
-int i, j;
-int flags;
-int warnings;
-char warningstext[16384]; //must have 16384 bytest text buffer
-char cmd = 0;
-string StageCode = "null";
-float wl = 800;
-
-bool CreateFullDirectory(const std::string& path) {
-    std::string partial;
-    std::istringstream ss(path);
-    std::string token;
-
-    // Split path by slash
-    while (std::getline(ss, token, '/')) {
-        if (!token.empty()) {
-            partial += token + '/';
-            CreateDirectoryA(partial.c_str(), NULL);
-        }
-    }
-
-    // Check if final directory exists or created
-    DWORD attribs = GetFileAttributesA(path.c_str());
-    return (attribs != INVALID_FILE_ATTRIBUTES && (attribs & FILE_ATTRIBUTE_DIRECTORY));
+static void closeAllDevices() {
+    for (int i = 0; i < MAXDEVNUM; i++) TH260_CloseDevice(i);  // no harm to close all
+    devIdx = -1;
 }
 
-unsigned int* ex(string outputDir, int xPos, int yPos);
-unsigned int* Initialize(string outputDir, int xPos, int yPos);
-unsigned int* measure(string outputDir, int xPos, int yPos);
+// ---------------------------------------------------------------------------
+// Initialize the board. Returns false and sets lastError on failure -- the old
+// version recursively retried from an error handler with a counter it never
+// reset, which meant a long scan silently died after five cumulative errors.
+// Errors now propagate to the client as ERR, which is recoverable in Python.
+// ---------------------------------------------------------------------------
+static bool initialize() {
+    if (devIdx >= 0) closeAllDevices();
 
-//Initializes tcspc board
-unsigned int* Initialize(string outputDir, int xPos, int yPos) {
-    StageCode = "Initialize";
-    for (i = 0; i < MAXDEVNUM; i++)
-    {
-        retcode = TH260_OpenDevice(i, HW_Serial);
-        if (retcode == 0) //Grab any device we can open
-        {
-            //printf("\n  %d        %7s    open ok", i, HW_Serial);
-            dev[found] = i; //keep index to devices we want to use
-            found++;
-        }
-        else
-        {
-            
+    int found = -1;
+    for (int i = 0; i < MAXDEVNUM; i++) {
+        if (TH260_OpenDevice(i, HW_Serial) == 0) {  // grab the first one we can open
+            found = i;
+            break;
         }
     }
-
-    //In this demo we will use the first device we find, i.e. dev[0].
-    //You can also use multiple devices in parallel.
-    //You can also check for specific serial numbers, so that you always know 
-    //which physical device you are talking to.
-
-    if (found < 1)
-    {
-        printf("\nNo device available.");
-        ex(outputDir, xPos, yPos);
+    if (found < 0) {
+        lastError = "no_device_available";
+        std::fprintf(stderr, "no TH260 device available\n");
+        return false;
     }
-    //printf("\nUsing device #%d", dev[0]);
+    devIdx = found;
+    std::fprintf(stderr, "using device #%d (serial %s)\n", devIdx, HW_Serial);
 
-    //printf("\nInitializing the device...");
+    TH_TRY(TH260_Initialize(devIdx, MODE_HIST), "TH260_Initialize");  // histogram mode, internal clock
+    TH_TRY(TH260_GetHardwareInfo(devIdx, HW_Model, HW_Partno, HW_Version), "TH260_GetHardwareInfo");
+    TH_TRY(TH260_GetNumOfInputChannels(devIdx, &NumChannels), "TH260_GetNumOfInputChannels");
+    if (NumChannels > MAXINPCHAN) NumChannels = MAXINPCHAN;
+    TH_TRY(TH260_SetSyncDiv(devIdx, SyncDivider), "TH260_SetSyncDiv");
 
-    retcode = TH260_Initialize(dev[0], MODE_HIST);  //Histo mode with internal clock
-    if (retcode < 0)
-    {
-        TH260_GetErrorString(Errorstring, retcode);
-        //printf("\nTH260_Initialize error %d (%s). Aborted.\n", retcode, Errorstring);
-        ex(outputDir, xPos, yPos);
+    if (strcmp(HW_Model, "TimeHarp 260 P") == 0) {  // picosecond resolving board
+        TH_TRY(TH260_SetSyncCFD(devIdx, SyncCFDLevel, SyncCFDZeroCross), "TH260_SetSyncCFD");
+        for (int i = 0; i < NumChannels; i++)  // same input settings for all channels
+            TH_TRY(TH260_SetInputCFD(devIdx, i, InputCFDLevel, InputCFDZeroCross), "TH260_SetInputCFD");
     }
 
-    retcode = TH260_GetHardwareInfo(dev[0], HW_Model, HW_Partno, HW_Version);
-    if (retcode < 0)
-    {
-        TH260_GetErrorString(Errorstring, retcode);
-        //printf("\nTH260_GetHardwareInfo error %d (%s). Aborted.\n", retcode, Errorstring);
-        ex(outputDir, xPos, yPos);
-    }
-    else
-        //printf("\nFound Model %s Part no %s Version %s", HW_Model, HW_Partno, HW_Version);
-
-
-    retcode = TH260_GetNumOfInputChannels(dev[0], &NumChannels);
-    if (retcode < 0)
-    {
-        TH260_GetErrorString(Errorstring, retcode);
-        printf("\nTH260_GetNumOfInputChannels error %d (%s). Aborted.\n", retcode, Errorstring);
-        ex(outputDir, xPos, yPos);
-    }
-    else
-        //printf("\nDevice has %i input channels.", NumChannels);
-
-
-    retcode = TH260_SetSyncDiv(dev[0], SyncDivider);
-    if (retcode < 0)
-    {
-        TH260_GetErrorString(Errorstring, retcode);
-        printf("\nPH_SetSyncDiv error %d (%s). Aborted.\n", retcode, Errorstring);
-        ex(outputDir, xPos, yPos);
+    if (strcmp(HW_Model, "TimeHarp 260 N") == 0) {  // nanosecond resolving board
+        TH_TRY(TH260_SetSyncEdgeTrg(devIdx, SyncTriggerLevel, SyncTriggerEdge), "TH260_SetSyncEdgeTrg");
+        for (int i = 0; i < NumChannels; i++)
+            TH_TRY(TH260_SetInputEdgeTrg(devIdx, i, InputTriggerLevel, InputTriggerEdge), "TH260_SetInputEdgeTrg");
     }
 
-    if (strcmp(HW_Model, "TimeHarp 260 P") == 0)  //Picosecond resolving board
-    {
-        retcode = TH260_SetSyncCFD(dev[0], SyncCFDLevel, SyncCFDZeroCross);
-        if (retcode < 0)
-        {
-            TH260_GetErrorString(Errorstring, retcode);
-            printf("\nTH260_SetSyncCFD error %d (%s). Aborted.\n", retcode, Errorstring);
-            ex(outputDir, xPos, yPos);
-        }
+    TH_TRY(TH260_SetSyncChannelOffset(devIdx, SyncOffset), "TH260_SetSyncChannelOffset");
+    for (int i = 0; i < NumChannels; i++)  // same input offset for all channels
+        TH_TRY(TH260_SetInputChannelOffset(devIdx, i, 0), "TH260_SetInputChannelOffset");
 
-        for (i = 0; i < NumChannels; i++) // we use the same input settings for all channels
-        {
-            retcode = TH260_SetInputCFD(dev[0], i, InputCFDLevel, InputCFDZeroCross);
-            if (retcode < 0)
-            {
-                TH260_GetErrorString(Errorstring, retcode);
-                printf("\nTH260_SetInputCFD error %d (%s). Aborted.\n", retcode, Errorstring);
-                ex(outputDir, xPos, yPos);
-            }
-        }
-    }
+    TH_TRY(TH260_SetHistoLen(devIdx, MAXLENCODE, &HistLen), "TH260_SetHistoLen");
+    TH_TRY(TH260_SetBinning(devIdx, Binning), "TH260_SetBinning");
+    TH_TRY(TH260_SetOffset(devIdx, Offset), "TH260_SetOffset");
+    TH_TRY(TH260_GetResolution(devIdx, &Resolution), "TH260_GetResolution");
+    TH_TRY(TH260_SetStopOverflow(devIdx, 0, 10000), "TH260_SetStopOverflow");
 
-    if (strcmp(HW_Model, "TimeHarp 260 N") == 0)  //Nanosecond resolving board
-    {
-        retcode = TH260_SetSyncEdgeTrg(dev[0], SyncTriggerLevel, SyncTiggerEdge);
-        if (retcode < 0)
-        {
-            TH260_GetErrorString(Errorstring, retcode);
-            printf("\nTH260_SetSyncEdgeTrg error %d (%s). Aborted.\n", retcode, Errorstring);
-            ex(outputDir, xPos, yPos);
-        }
-
-        for (i = 0; i < NumChannels; i++) // we use the same input settings for all channels
-        {
-            retcode = TH260_SetInputEdgeTrg(dev[0], i, InputTriggerLevel, InputTriggerEdge);
-            if (retcode < 0)
-            {
-                TH260_GetErrorString(Errorstring, retcode);
-                printf("\nTH260_SetInputEdgeTrg error %d (%s). Aborted.\n", retcode, Errorstring);
-                ex(outputDir, xPos, yPos);
-            }
-        }
-    }
-
-    retcode = TH260_SetSyncChannelOffset(dev[0], SyncOffset);
-    if (retcode < 0)
-    {
-        TH260_GetErrorString(Errorstring, retcode);
-        printf("\nTH260_SetSyncChannelOffset error %d (%s). Aborted.\n", retcode, Errorstring);
-        ex(outputDir, xPos, yPos);
-    }
-
-    for (i = 0; i < NumChannels; i++) // we use the same input offset for all channels
-    {
-        retcode = TH260_SetInputChannelOffset(dev[0], i, 0);
-        if (retcode < 0)
-        {
-            TH260_GetErrorString(Errorstring, retcode);
-            printf("\nTH260_SetInputChannelOffset error %d (%s). Aborted.\n", retcode, Errorstring);
-            ex(outputDir, xPos, yPos);
-        }
-    }
-
-    retcode = TH260_SetHistoLen(dev[0], MAXLENCODE, &HistLen);
-    if (retcode < 0)
-    {
-        TH260_GetErrorString(Errorstring, retcode);
-        printf("\nTH260_SetHistoLen error %d (%s). Aborted.\n", retcode, Errorstring);
-        ex(outputDir, xPos, yPos);
-    }
-    //printf("\nHistogram length is %d", HistLen);
-
-    retcode = TH260_SetBinning(dev[0], Binning);
-    if (retcode < 0)
-    {
-        TH260_GetErrorString(Errorstring, retcode);
-        printf("\nTH260_SetBinning error %d (%s). Aborted.\n", retcode, Errorstring);
-        ex(outputDir, xPos, yPos);
-    }
-
-    retcode = TH260_SetOffset(dev[0], Offset);
-    if (retcode < 0)
-    {
-        TH260_GetErrorString(Errorstring, retcode);
-        printf("\nTH260_SetOffset error %d (%s). Aborted.\n", retcode, Errorstring);
-        ex(outputDir, xPos, yPos);
-    }
-
-    retcode = TH260_GetResolution(dev[0], &Resolution);
-    if (retcode < 0)
-    {
-        TH260_GetErrorString(Errorstring, retcode);
-        printf("\nTH260_GetResolution error %d (%s). Aborted.\n", retcode, Errorstring);
-        ex(outputDir, xPos, yPos);
-    }
-
-    //printf("\nResolution is %1.0lfps\n", Resolution);
-
-    // After Init allow 150 ms for valid  count rate readings
-    // Subsequently you get new values after every 100ms
-    //Sleep(150);
-    return(0);
+    std::fprintf(stderr, "model %s, %d channels, %d bins, %1.0lf ps\n",
+                 HW_Model, NumChannels, HistLen, Resolution);
+    return true;
 }
 
-// measures TCSPC Data
-unsigned int* measure(string outputDir, int xPos, int yPos) {
-
-    std::string Directory = "C:/Users/Seyed Sadeghi/Desktop/SpectralFLIM/" + outputDir + "/" + std::to_string(wl);
-    if (CreateFullDirectory(Directory)) {
-        //printf("worked\n");
-    }
-    else {
-        //printf("didn't work\n");
-    }
-    string PositionFileName = "C:/Users/Seyed Sadeghi/Desktop/SpectralFLIM/" + outputDir + "/" + std::to_string(wl) + "/" + "x" + std::to_string(xPos) + "_y" + std::to_string(yPos) + ".txt";
-    const char* PosFileNamePointer = PositionFileName.c_str();
- 
-    if ((fpout = fopen(PosFileNamePointer, "w")) == NULL)
-    {
-        printf("\ncannot open output file\n");
-        exit;
+// ---------------------------------------------------------------------------
+// One acquisition into counts[][]. Fills Syncrate / Countrate / Overflow.
+// ---------------------------------------------------------------------------
+static bool measure(int tacq_ms) {
+    if (devIdx < 0) {
+        lastError = "not_initialized";
+        return false;
     }
 
-    StageCode = "measure";
-    retcode = TH260_GetSyncRate(dev[0], &Syncrate);
-    if (retcode < 0)
-    {
-        TH260_GetErrorString(Errorstring, retcode);
-        printf("\nTH260_GetSyncRate error %d (%s). Aborted.\n", retcode, Errorstring);
-        ex(outputDir, xPos, yPos);
-    }
-    //printf("\nSyncrate=%1d/s", Syncrate);
+    TH_TRY(TH260_ClearHistMem(devIdx), "TH260_ClearHistMem");
+    TH_TRY(TH260_GetSyncRate(devIdx, &Syncrate), "TH260_GetSyncRate");
+    for (int i = 0; i < NumChannels; i++)
+        TH_TRY(TH260_GetCountRate(devIdx, i, &Countrate[i]), "TH260_GetCountRate");
 
-
-    for (i = 0; i < NumChannels; i++) // for all channels
-    {
-        retcode = TH260_GetCountRate(dev[0], i, &Countrate);
-        if (retcode < 0)
-        {
-            //TH260_GetErrorString(Errorstring, retcode);
-            //printf("\nTH260_GetCountRate error %d (%s). Aborted.\n", retcode, Errorstring);
-            ex(outputDir, xPos, yPos);
-        }
-        //printf("\nCountrate[%1d]=%1d/s", i, Countrate);
+    int warnings = 0;
+    TH_TRY(TH260_GetWarnings(devIdx, &warnings), "TH260_GetWarnings");
+    if (warnings) {
+        char warningstext[16384] = {0};  // library requires a 16384-byte buffer
+        TH260_GetWarningsText(devIdx, warningstext, warnings);
+        std::fprintf(stderr, "%s\n", warningstext);
     }
 
-    //printf("\n");
+    TH_TRY(TH260_StartMeas(devIdx, tacq_ms), "TH260_StartMeas");
+    int ctcstatus = 0;
+    while (ctcstatus == 0)
+        TH_TRY(TH260_CTCStatus(devIdx, &ctcstatus), "TH260_CTCStatus");
+    TH_TRY(TH260_StopMeas(devIdx), "TH260_StopMeas");
 
-    //after getting the count rates you can check for warnings
-    retcode = TH260_GetWarnings(dev[0], &warnings);
-    if (retcode < 0)
-    {
-        TH260_GetErrorString(Errorstring, retcode);
-        printf("\nTH260_GetWarnings error %d (%s). Aborted.\n", retcode, Errorstring);
-        ex(outputDir, xPos, yPos);
-    }
-    if (warnings)
-    {
-        TH260_GetWarningsText(dev[0], warningstext, warnings);
-        //printf("\n\n%s", warningstext);
-    }
+    for (int i = 0; i < NumChannels; i++)
+        TH_TRY(TH260_GetHistogram(devIdx, counts[i], i, 1), "TH260_GetHistogram");
 
+    int flags = 0;
+    TH_TRY(TH260_GetFlags(devIdx, &flags), "TH260_GetFlags");
+    Overflow = (flags & FLAG_OVERFLOW) != 0;
+    if (Overflow) std::fprintf(stderr, "overflow\n");
 
-    retcode = TH260_SetStopOverflow(dev[0],
-        0, 10000); //for example only
-    if (retcode < 0)
-    {
-        TH260_GetErrorString(Errorstring, retcode);
-        printf("\nTH260_SetStopOverflow error %d (%s). Aborted.\n", retcode, Errorstring);
-        ex(outputDir, xPos, yPos);
-    }
-
-    cmd = 0;
-    while (cmd != 'q')
-    {
-
-        retcode = TH260_ClearHistMem(dev[0]);
-        if (retcode < 0)
-        {
-            TH260_GetErrorString(Errorstring, retcode);
-            printf("\nTH260_ClearHistMem error %d (%s). Aborted.\n", retcode, Errorstring);
-            ex(outputDir, xPos, yPos);
-        }
-
-        //printf("\npress RETURN to start measurement");=================================================================================================================================
-        //getchar()=======================================================================
-
-        retcode = TH260_GetSyncRate(dev[0], &Syncrate);
-        if (retcode < 0)
-        {
-            TH260_GetErrorString(Errorstring, retcode);
-            printf("\nTH260_GetSyncRate error %d (%s). Aborted.\n", retcode, Errorstring);
-            ex(outputDir, xPos, yPos);
-        }
-        //printf("\nSyncrate=%d/s", Syncrate);
-
-        for (i = 0; i < NumChannels; i++) // for all channels
-        {
-            retcode = TH260_GetCountRate(dev[0], i, &Countrate);
-            if (retcode < 0)
-            {
-                //TH260_GetErrorString(Errorstring, retcode);
-                //printf("\nTH260_GetCountRate error %d (%s). Aborted.\n", retcode, Errorstring);
-                ex(outputDir, xPos, yPos);
-            }
-            //printf("\nCountrate[%d]=%d/s", i, Countrate);
-        }
-
-        //here you could check for warnings again
-
-        retcode = TH260_StartMeas(dev[0], Tacq);
-        if (retcode < 0)
-        {
-            TH260_GetErrorString(Errorstring, retcode);
-            printf("\nTH260_StartMeas error %d (%s). Aborted.\n", retcode, Errorstring);
-            ex(outputDir, xPos, yPos);
-        }
-
-        //printf("\n\nMeasuring for %d milliseconds...", Tacq);
-
-        ctcstatus = 0;
-        while (ctcstatus == 0)
-        {
-            retcode = TH260_CTCStatus(dev[0], &ctcstatus);
-            if (retcode < 0)
-            {
-                TH260_GetErrorString(Errorstring, retcode);
-                printf("\nTH260_CTCStatus error %d (%s). Aborted.\n", retcode, Errorstring);
-                ex(outputDir, xPos, yPos);
-            }
-        }
-
-        retcode = TH260_StopMeas(dev[0]);
-        if (retcode < 0)
-        {
-            TH260_GetErrorString(Errorstring, retcode);
-            printf("\nTH260_StopMeas error %d (%s). Aborted.\n", retcode, Errorstring);
-            ex(outputDir, xPos, yPos);
-        }
-
-        //printf("\n");
-        for (i = 0; i < NumChannels; i++) // for all channels
-        {
-            retcode = TH260_GetHistogram(dev[0], counts[i], i, 1);
-            if (retcode < 0)
-            {
-                TH260_GetErrorString(Errorstring, retcode);
-                printf("\nTH260_GetHistogram error %d (%s). Aborted.\n", retcode, Errorstring);
-                ex(outputDir, xPos, yPos);
-            }
-
-            Integralcount = 0;
-            for (j = 0; j < HistLen; j++)
-                Integralcount += counts[i][j];
-
-            //printf("\n  Integralcount[%1d]=%1.0lf", i, Integralcount);
-
-        }
-        //printf("\n");
-
-        retcode = TH260_GetFlags(dev[0], &flags);
-        if (retcode < 0)
-        {
-            TH260_GetErrorString(Errorstring, retcode);
-            printf("\nTH260_GetFlags error %d (%s). Aborted.\n", retcode, Errorstring);
-            ex(outputDir, xPos, yPos);
-        }
-
-        if (flags & FLAG_OVERFLOW) printf("\n  Overflow.");
-
-        //printf("\nEnter c to continue or q to quit and save the count data.");
-        cmd = 'q';
-        //getchar();
-    }
-
-    for (j = 0; j < 2000; j++)
-    {
-        for (i = 0; i < NumChannels; i++)
-            fprintf(fpout, "%5d ", counts[i][j]);
-        fprintf(fpout, "\n");
-    }
-    fclose(fpout);
-    return(0);
-};
-
-// closes tcspc board, also reinitializes board and retakes measurements in case of an error
-unsigned int* ex(string outputDir, int xPos, int yPos) {
-    errorCount += 1;
-    printf("%d", errorCount);
-    if (errorCount > 4) { 
-        for (i = 0; i < MAXDEVNUM; i++) //no harm to close all
-        {
-            TH260_CloseDevice(i);
-            printf("closed the device");
-        }
-        
-        abort;
-    }//limits number of errors to 5 in case of repeatin error, preventing infinite loops
-    else {
-
-        for (i = 0; i < MAXDEVNUM; i++) //no harm to close all
-        {
-            TH260_CloseDevice(i);
-            printf("closed the device ");
-        }
-              
-        if (StageCode == "measure") {
-            Initialize(outputDir, xPos, yPos);
-            measure(outputDir, xPos, yPos);
-        }
-        if (StageCode == "End of Line") {
-            for (i = 0; i < MAXDEVNUM; i++) //no harm to close all
-            {
-                TH260_CloseDevice(i);
-                printf("closed the device");
-            }
-        }
-    }
-
-    return(0);
+    return true;
 }
 
-//main code
+// "RES=<ps> CH=<n> LEN=<bins>" -- shared by init and info.
+static std::string infoFields() {
+    std::ostringstream os;
+    os << "RES=" << Resolution << " CH=" << NumChannels << " LEN=" << HistLen;
+    return os.str();
+}
+
 int main() {
     std::cout << "OK ready\n" << std::flush;
+
     std::string line;
-    try {
-        while (std::getline(std::cin, line)) {
-            if (line.empty()) continue;
-            std::istringstream iss(line);
-            std::string cmd; iss >> cmd;
+    while (std::getline(std::cin, line)) {
+        if (line.empty()) continue;
+        std::istringstream iss(line);
+        std::string cmd;
+        iss >> cmd;
 
-            if (cmd == "init") {
-                int ix, iy; string outputDir; iss >> outputDir >> ix >> iy;
-                Initialize(outputDir, ix, iy);
-                std::cout << "OK\n";
+        if (cmd == "init") {
+            if (initialize()) std::cout << "OK " << infoFields() << "\n";
+            else              std::cout << "ERR " << lastError << "\n";
+
+        } else if (cmd == "info") {
+            if (devIdx < 0) std::cout << "ERR not_initialized\n";
+            else            std::cout << "OK " << infoFields() << "\n";
+
+        } else if (cmd == "measure") {
+            int tacq_ms = 5000, bins = 2000;
+            iss >> tacq_ms >> bins;
+            if (bins <= 0 || bins > HistLen) bins = HistLen;  // clamp to what the board holds
+
+            if (!measure(tacq_ms)) {
+                std::cout << "ERR " << lastError << "\n";
+            } else {
+                std::ostringstream os;
+                os << "OK " << infoFields() << " SYNC=" << Syncrate << " CR=";
+                for (int i = 0; i < NumChannels; i++) {
+                    if (i) os << ',';
+                    os << Countrate[i];
+                }
+                os << " OVF=" << (Overflow ? 1 : 0) << " DATA=";
+                for (int i = 0; i < NumChannels; i++) {
+                    if (i) os << ';';
+                    for (int j = 0; j < bins; j++) {
+                        if (j) os << ',';
+                        os << counts[i][j];
+                    }
+                }
+                std::cout << os.str() << "\n";
             }
 
-            else if (cmd == "measure") {
-                int ix, iy, t_acq; string outputDir; float wavelength;  iss >> outputDir >> ix >> iy >> wavelength >> t_acq;
-                wl = wavelength;
-                Tacq = t_acq;
-                measure(outputDir, ix, iy);
-                std::cout << "OK\n";
-            }
+        } else if (cmd == "exit") {
+            closeAllDevices();
+            std::cout << "OK\n" << std::flush;
+            return 0;
 
-            else if (cmd == "exit") {
-                StageCode = "End of Line";
-                int ix, iy; string outputDir; iss >> outputDir >> ix >> iy;
-                ex(outputDir, ix, iy);
-                std::cout << "OK\n";
-            }
-
-            else {
-                std::cout << "ERR unknown_cmd\n";
-            }
-
-            std::cout.flush();
+        } else {
+            std::cout << "ERR unknown_cmd\n";
         }
-    }
-    catch (const std::exception& e) {
-        std::cout << "ERR " << e.what() << "\n";
+
+        std::cout.flush();
     }
 
+    closeAllDevices();
     return 0;
 }

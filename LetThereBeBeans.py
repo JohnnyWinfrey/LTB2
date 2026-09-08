@@ -28,6 +28,9 @@ class Automations:
     def Hyperspectral_SingleFluor(self):      
         self._run("Hyperspectral_singleFluor.py")
 
+    def TCSPC_Spectral(self):
+        self._run("TCSPC_Spectral.py")
+
     def _run(self, script):
         # New process => its own QApplication; doesn't block this menu.
         subprocess.Popen([sys.executable, script])

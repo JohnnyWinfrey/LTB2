@@ -655,6 +655,71 @@ class Digitizer:
         return voltage
 
 
+class TH260:
+    """TimeHarp 260 TCSPC board via helpers/th260_helper_ultra.exe.
+
+    The helper returns the histogram over its line protocol; this class holds
+    the acquisition settings and hands raw arrays to the automation.
+    """
+
+    def __init__(self, exe_path="helpers/th260_helper_ultra.exe"):
+        from hardware_controllers import TH260Client
+        self.th = TH260Client(exe_path)
+        info = self.th.init()
+        self.resolutionPs = info["resolution_ps"]
+        self.numChannels = info["channels"]
+        self.histLen = info["hist_len"]
+        self.tacq = 5000        # acquisition time, ms
+        self.bins = 2000        # bins kept per acquisition
+        self.channel = 0        # channel plotted / saved
+        self.lastCounts = None
+        self.lastCountRate = 0
+        self.lastSyncRate = 0
+        print(f"TH260 online -- {self.numChannels} ch, {self.histLen} bins, "
+              f"{self.resolutionPs:.0f} ps")
+
+    def setTacq(self, value_str):
+        self.tacq = int(float(value_str))
+        print(f"Acquisition time set to {self.tacq} ms")
+
+    def setBins(self, value_str):
+        self.bins = int(float(value_str))
+        print(f"Bins set to {self.bins}")
+
+    def setChannel(self, value_str):
+        self.channel = int(float(value_str))
+        print(f"Channel set to {self.channel}")
+
+    def _timeAxisNs(self, bins=None):
+        """Bin centres in ns -- the x axis for a decay curve."""
+        n = self.bins if bins is None else bins
+        return np.arange(n) * (self.resolutionPs / 1000.0)
+
+    def _acquire(self):
+        """One acquisition. Underscored so auto_gui ignores it; automations call
+        this for the array, while measure() is the GUI-facing readout."""
+        result = self.th.measure(self.tacq, self.bins)
+        self.lastCounts = result["counts"]
+        self.lastSyncRate = result["sync_rate"]
+        rates = result["count_rate"]
+        self.lastCountRate = rates[self.channel] if self.channel < len(rates) else 0
+        if result["overflow"]:
+            print("WARNING: TH260 histogram overflowed")
+        return result
+
+    def measure(self):
+        result = self._acquire()
+        total = int(result["counts"][self.channel].sum())
+        print(f"TH260 measured {total} counts on channel {self.channel}")
+        return f"{total} counts"
+
+    def getResolution(self):
+        return f"{self.resolutionPs:.0f} ps"
+
+    def getCountRate(self):
+        return f"{self.lastCountRate} /s"
+
+
 # ──────────────────────────────────────────────────────────────────────────
 # Fake devices for the QML-free ports (headless / sim mode)
 # ──────────────────────────────────────────────────────────────────────────
@@ -699,6 +764,47 @@ class _FakeMono:
 
     def close_shutter(self):
         pass
+
+    def close(self):
+        pass
+
+
+class _FakeTH260Client:
+    """No-op stand-in for TH260Client: synthetic single-exponential decay."""
+
+    RESOLUTION_PS = 200.0
+    CHANNELS = 2
+    HISTLEN = 32768
+
+    def __init__(self, *args, **kwargs):
+        pass
+
+    def init(self):
+        return {"resolution_ps": self.RESOLUTION_PS,
+                "channels": self.CHANNELS,
+                "hist_len": self.HISTLEN}
+
+    def info(self):
+        return self.init()
+
+    def measure(self, tacq_ms, bins=2000):
+        t0 = 40
+        j = np.arange(bins)
+        dt = np.clip(j - t0, 0, None)
+        rows = []
+        for ch in range(self.CHANNELS):
+            tau = (12.0 if ch == 0 else 20.0) / (self.RESOLUTION_PS / 1000.0)
+            mean = 2.0 + (1e4 * max(tacq_ms / 5000.0, 1.0)
+                          * (1 - np.exp(-dt / 3.0)) * np.exp(-dt / tau)) * (j >= t0)
+            rows.append(np.random.poisson(mean))
+        return {"resolution_ps": self.RESOLUTION_PS,
+                "channels": self.CHANNELS,
+                "hist_len": self.HISTLEN,
+                "bins": bins,
+                "sync_rate": 40000000,
+                "count_rate": [25000, 26000],
+                "overflow": False,
+                "counts": np.array(rows, dtype=np.uint32)}
 
     def close(self):
         pass
@@ -755,3 +861,21 @@ class FakeDigitizer(Digitizer):
         voltage = random.uniform(0.0, 10.0)
         print(f"Digitizer measured {voltage:.4f} V")
         return voltage
+
+
+class FakeTH260(TH260):
+    """Headless TCSPC board: real logic driving a fake helper process."""
+
+    def __init__(self, exe_path="FAKE"):
+        self.th = _FakeTH260Client()
+        info = self.th.init()
+        self.resolutionPs = info["resolution_ps"]
+        self.numChannels = info["channels"]
+        self.histLen = info["hist_len"]
+        self.tacq = 5000
+        self.bins = 2000
+        self.channel = 0
+        self.lastCounts = None
+        self.lastCountRate = 0
+        self.lastSyncRate = 0
+        print("FakeTH260 online")
