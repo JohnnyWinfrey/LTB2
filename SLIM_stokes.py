@@ -19,9 +19,11 @@ class SLIMStokes():
         stokes_CW = [0, 0, 45, 45]   # PSA waveplate angles
 
         all_data = []
+        self.avgStepTime = []
         for angleStep in range(0, 91, 10):
             if getattr(self, "_stop", False):    # Stop button pressed?
                 break
+            t0 = time.time()
             for s in range(len(stokes_IP)):
                 if getattr(self, "_stop", False):
                     break
@@ -37,6 +39,10 @@ class SLIMStokes():
                 angles = {"IW_Theta": angleStep, "IP_Theta": angleStep,
                           "CW_Theta": stokes_CW[s], "CP_Theta": stokes_IP[s]}
                 all_data.append((angles, np.array(intensities), np.array(wavelengths)))
+            t1=time.time()
+
+            self.avgStepTime.append(t1-t0)
+            self.progress(angleStep, 10, np.average(self.avgStepTime))
 
         self.PSG_DeathStar.home()
         self.PSA_DeathStar.home()
@@ -54,7 +60,7 @@ class SLIMStokes():
 if __name__ == "__main__":
     from auto_gui import run_gui, LivePlot
 
-    sim = 1
+    sim = 0
     if sim:
         from hardware import FakeDeathStar as DeathStar, FakeSpectreCore as Spectro
         psg = DeathStar(id="PSG")

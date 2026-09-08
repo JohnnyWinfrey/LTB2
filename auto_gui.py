@@ -247,8 +247,8 @@ class Progress(QObject):
         self._bar.setRange(0, total)
         self._bar.setValue(min(current, total))
         if total != 0:
-            _pComplete = 1-((current+1)/total)
-            text = f"~{round(_pComplete*stepTime)} min"
+            _pComplete = total-(current+1)
+            text = f"~{round(_pComplete*stepTime/60)} min"
             self._label.setText(f"{text}")
 
 

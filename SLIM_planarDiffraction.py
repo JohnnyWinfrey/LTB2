@@ -61,7 +61,7 @@ class SLIMEdgeLP():
 if __name__ == "__main__":
     from auto_gui import run_gui, LivePlot
 
-    sim = 1
+    sim = 0
     if sim:
         from hardware import FakeDeathStar as DeathStar, FakeSpectreCore as Spectro
         psg = DeathStar(id="PSG")

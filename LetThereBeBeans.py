@@ -14,7 +14,7 @@ class Automations:
         self._run("SLIM_stokes.py")
 
     def SLIM_Mueller(self):      
-        self._run("SLIM_mueller.py")
+        self._run("SLIM_DRM.py")
         
     def SLIM_PlanarDiffraction(self):       
         self._run("SLIM_planarDiffraction.py")
