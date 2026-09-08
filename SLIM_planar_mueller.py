@@ -30,6 +30,7 @@ class SLIMPlanarMueller():
         self.numPoints  = 41
         self.stepSize   = 0.5
         self.stageWait  = 4         # s to let the Z stage settle after a move
+        self.numAngles  = 61        # PSG waveplate steps over a full rotation
 
         print("SLIM AUTOMATION READY")
 
@@ -38,8 +39,7 @@ class SLIMPlanarMueller():
     # ──────────────────────────────────────────────────────────────────────
     def _dualRotatingWaveplate(self):
         """One full DRM angle sweep at the current stage position."""
-        numSteps = 61
-        psg_waveplate_angles = np.linspace(0, 360, numSteps)
+        psg_waveplate_angles = np.linspace(0, 360, self.numAngles)
 
         all_data = []
         for i in range(len(psg_waveplate_angles)):
@@ -83,8 +83,15 @@ class SLIMPlanarMueller():
                 time.sleep(self.stageWait)
 
                 all_data = self._dualRotatingWaveplate()
-                if all_data:
+                # Only keep complete sweeps: a run stopped part-way through one
+                # never covers the full 360 deg rotation, so it cannot be
+                # inverted into a Mueller matrix -- saving it would look like a
+                # good point and quietly poison the processing.
+                if len(all_data) == self.numAngles:
                     points.append(({'z': T2}, all_data))
+                elif all_data:
+                    print(f"  discarding partial sweep at T2={T2} "
+                          f"({len(all_data)}/{self.numAngles} angles)")
 
                 # Progress bar stuff
                 t1 = time.time()
