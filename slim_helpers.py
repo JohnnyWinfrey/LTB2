@@ -74,19 +74,20 @@ def saveMuellerHDF5(points, scanType, name="sample", region="A", side="X",
     """
     Save a multi-position Mueller scan to HDF5, one group per stage location.
 
-    points : list of (coord_dict, all_data) tuples, where coord_dict is
-             {'x': mm, 'y': mm} (the XWing position) and all_data is the
-             list of (angles_dict, intensities, wavelengths) tuples collected
-             at that position -- i.e. exactly what saveHDF5 takes.
+    points : list of (coord_dict, all_data) tuples, where coord_dict holds the
+             stage location -- {'z': mm} for a Z-axis line scan, or any of
+             'x'/'y'/'z' -- and all_data is the list of (angles_dict,
+             intensities, wavelengths) tuples collected at that position, i.e.
+             exactly what saveHDF5 takes.
 
     Layout::
 
         /                       attrs: region, side, integration_time_us, ...
-        /x0.000_y0.000/         attrs: x, y, point_index
+        /z0.000/                attrs: z, point_index
             wavelength          (N_wl,)
             IW_Theta ...        (N_scans,)
             intensity           (N_scans, N_wl)
-        /x0.500_y0.000/
+        /z0.500/
             ...
 
     Groups are written in acquisition order (track_order), so iterating the
@@ -114,11 +115,14 @@ def saveMuellerHDF5(points, scanType, name="sample", region="A", side="X",
             if not all_data:
                 continue
 
-            grp = f.create_group(
-                f"x{coord['x']:.3f}_y{coord['y']:.3f}", track_order=True
+            # Group name is the stage location, e.g. "z0.500" or "x1.000_y2.000".
+            label = "_".join(
+                f"{ax}{coord[ax]:.3f}" for ax in ("x", "y", "z") if ax in coord
             )
-            grp.attrs["x"]           = coord["x"]
-            grp.attrs["y"]           = coord["y"]
+            grp = f.create_group(label, track_order=True)
+            for ax in ("x", "y", "z"):
+                if ax in coord:
+                    grp.attrs[ax] = coord[ax]
             grp.attrs["point_index"] = idx
 
             # tuple layout is (angles_dict, intensities, wavelengths)
