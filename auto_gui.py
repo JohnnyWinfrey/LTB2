@@ -33,12 +33,12 @@ from PySide6.QtWidgets import (
 # new .qss file in themes/. Bundled:
 #   "dark", "light", "ltb2"        -- neutral / the old SLIM look
 #   "synthwave", "matrix", "dracula", "nord", "gruvbox", "bubblegum", "hotdog"
-THEME = "gruvbox"
+THEME = ""
 
 # Optional wallpaper drawn (stretched) behind the panels: a file in themes/
 # (png / jpg / gif). NOTE: GIFs show their FIRST FRAME only -- Qt stylesheets
 # don't animate. Set to None for no background.
-BACKGROUND = ""
+BACKGROUND = "rat.jpg"
 
 
 def _apply_theme(app):
@@ -326,6 +326,12 @@ class ControlWindow(QWidget):
         setattr(self.automation, "result", result)
         stopped = getattr(self.automation, "_stop", False)
         self.status.setText("Stopped" if stopped else "Done")
+        if not stopped:
+            # Loops report 0-based steps, so the bar ends one short; fill it.
+            if self.bar.maximum() == 0:   # never reported: leave busy mode
+                self.bar.setRange(0, 1)
+            self.bar.setValue(self.bar.maximum())
+            self.step_label.setText("")
         self._reset_buttons()
 
     def _on_error(self, tb):

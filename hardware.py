@@ -670,7 +670,7 @@ class TH260:
         self.numChannels = info["channels"]
         self.histLen = info["hist_len"]
         self.tacq = 5000        # acquisition time, ms
-        self.bins = 2000        # bins kept per acquisition
+        self.bins = None        # bins kept per acquisition; None => auto (sync period)
         self.channel = 0        # channel plotted / saved
         self.lastCounts = None
         self.lastCountRate = 0
@@ -683,8 +683,12 @@ class TH260:
         print(f"Acquisition time set to {self.tacq} ms")
 
     def setBins(self, value_str):
-        self.bins = int(float(value_str))
-        print(f"Bins set to {self.bins}")
+        """A number fixes the bin count; 'auto', 0 or blank goes back to sizing
+        the histogram to one sync period at the start of each acquisition."""
+        text = str(value_str).strip().lower()
+        n = 0 if text in ("", "auto") else int(float(text))
+        self.bins = n if n > 0 else None
+        print(f"Bins set to {self.bins if self.bins else 'auto (one sync period)'}")
 
     def setChannel(self, value_str):
         self.channel = int(float(value_str))
@@ -698,7 +702,7 @@ class TH260:
     def _acquire(self):
         """One acquisition. Underscored so auto_gui ignores it; automations call
         this for the array, while measure() is the GUI-facing readout."""
-        result = self.th.measure(self.tacq, self.bins)
+        result = self.th.measure(self.tacq, self.bins or 0)  # 0 => whole histogram
         self.lastCounts = result["counts"]
         self.lastSyncRate = result["sync_rate"]
         rates = result["count_rate"]
@@ -718,6 +722,26 @@ class TH260:
 
     def getCountRate(self):
         return f"{self.lastCountRate} /s"
+
+
+class TH260Direct(TH260):
+    """TH260 driven straight through th260lib64.dll (TH260DLLClient) instead of
+    the helper exe. `settings` must hold every TH260DLLClient.SETTING_KEYS key;
+    the automation file owns them (see TCSPC_Live.py)."""
+
+    def __init__(self, settings, dll_path="helpers/th260lib64.dll", bin_width_ps=200):
+        from hardware_controllers import TH260DLLClient
+        self.th = TH260DLLClient(settings, dll_path, bin_width_ps)
+        info = self.th.init()
+        self.resolutionPs = info["resolution_ps"]
+        self.numChannels = info["channels"]
+        self.histLen = info["hist_len"]
+        self.tacq = 5000
+        self.bins = None
+        self.channel = 0
+        self.lastCounts = None
+        self.lastCountRate = 0
+        self.lastSyncRate = 0
 
 
 # ──────────────────────────────────────────────────────────────────────────
@@ -806,6 +830,16 @@ class _FakeTH260Client:
                 "overflow": False,
                 "counts": np.array(rows, dtype=np.uint32)}
 
+    def rates(self):
+        return 40000000, [int(np.random.normal(25000, 500)),
+                          int(np.random.normal(26000, 500))]
+
+    def setBinWidth(self, width_ps):
+        # 260 P-like: 25 ps base, 2**n steps. Instance attr shadows the class one.
+        code = int(round(np.log2(max(float(width_ps), 25.0) / 25.0)))
+        self.RESOLUTION_PS = 25.0 * 2 ** min(max(code, 0), 21)
+        return self.RESOLUTION_PS
+
     def close(self):
         pass
 
@@ -873,7 +907,7 @@ class FakeTH260(TH260):
         self.numChannels = info["channels"]
         self.histLen = info["hist_len"]
         self.tacq = 5000
-        self.bins = 2000
+        self.bins = None
         self.channel = 0
         self.lastCounts = None
         self.lastCountRate = 0

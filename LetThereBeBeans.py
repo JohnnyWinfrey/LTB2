@@ -31,6 +31,9 @@ class Automations:
     def TCSPC_Spectral(self):
         self._run("TCSPC_Spectral.py")
 
+    def TCSPC_Live(self):
+        self._run("TCSPC_Live.py")
+
     def _run(self, script):
         # New process => its own QApplication; doesn't block this menu.
         subprocess.Popen([sys.executable, script])

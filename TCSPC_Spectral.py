@@ -3,27 +3,53 @@
 Run: python TCSPC_Spectral.py
 Sweeps the monochromator across its wavelength range at a single fixed point
 and records a TimeHarp 260 decay histogram at each step, then writes one HDF5
-file. Set sim = 0 for real hardware, sim = 2 to drive the native stub helper
-built by helpers/build.sh.
+file. The count rate is shown live as a number throughout (between steps too,
+while the monochromator moves and settles). Set sim = 0 for real hardware,
+sim = 1 for the fake monochromator and board.
+
+The TH260 is driven straight through th260lib64.dll (hardware.TH260Direct) with
+the board settings below; the bin width can also be changed with setBinWidth.
 """
 import time
-from datetime import datetime
 
 import numpy as np
 
-from th260_helpers import saveTCSPCHDF5
+from th260_helpers import TH260RateView, makeRateDisplay, saveTCSPCHDF5
 
 
-class TCSPCSpectral():
+# ─────────────────────────────────────────────────────────────────────────
+# TH260 board settings for this configuration (TimeHarp 260 P).
+# ─────────────────────────────────────────────────────────────────────────
+TH260_SETTINGS = {
+    "sync_divider": 1,             # "None"
+    "sync_cfd_zero_cross": -10,    # mV
+    "sync_cfd_level": -50,         # mV
+    "sync_offset_ps": 0,
+    "input_cfd_zero_cross": -10,   # mV, all channels
+    "input_cfd_level": [-30, -100], # mV, per channel (ch 1, ch 2)
+    "input_offset_ps": -25000,     # all channels
+    "offset_ns": 0,                # acquisition offset
+    "stop_overflow": 0,            # "Stop Of." unchecked
+    "stop_count": 4294967295,      # "Stop at"
+    # Only used on a nanosecond (260 N) board.
+    "sync_trigger_edge": 0,
+    "sync_trigger_level": -50,
+    "input_trigger_edge": 0,
+    "input_trigger_level": -50,
+}
+BIN_WIDTH_PS = 200                 # starting bin width; change with setBinWidth
+
+
+class TCSPCSpectral(TH260RateView):
 
     def __init__(self, cornerstone, th260):
         self.cornerstone = cornerstone
         self.th260 = th260
-        self.plotter = None
         self.sampleName = "sample"
         self.region = "A"
         self.settleTime = 1.0     # seconds to let the monochromator settle
         self.avgStepTime = []
+        self._initRateView()      # rate display, driver lock, setBinWidth
         print("TCSPCSpectral Ready")
 
     def setSampleName(self, value_str):
@@ -34,16 +60,26 @@ class TCSPCSpectral():
         self.region = str(value_str)
         print(f"Region: {self.region}")
 
+    def setSettleTime(self, value_str):
+        self.settleTime = max(0.0, float(value_str))
+        print(f"Settle time: {self.settleTime} s")
+
     def _spectralScan(self):
         cs = self.cornerstone
+        th = self.th260
+        bins = self._resolveBins()   # once, so every wavelength has the same length
+        if bins is None:
+            return []
         step_size = (cs.endWavelength - cs.startWavelength) / cs.numSteps
         print(f"Sweeping {cs.startWavelength}-{cs.endWavelength} nm in "
-              f"{cs.numSteps} steps, {self.th260.tacq} ms per point")
+              f"{cs.numSteps} steps, {th.tacq} ms per point, "
+              f"{bins} bins of {th.resolutionPs:.0f} ps")
 
         cs.mono.open_shutter()
         cs.shutterState = "Open"
         all_data = []
         self.avgStepTime = []
+        self._acquiring = True    # locks the bin width for the whole scan
 
         try:
             for j in range(cs.numSteps):
@@ -56,8 +92,9 @@ class TCSPCSpectral():
                 time.sleep(self.settleTime)
                 cs.currentWavelength = wavelength
 
-                result = self.th260._acquire()
+                result = self._measure(th.tacq, bins)
                 counts = result["counts"]
+                th.lastCounts = counts
                 all_data.append({
                     'wavelength': wavelength,
                     'counts': counts,
@@ -65,25 +102,22 @@ class TCSPCSpectral():
                     'count_rate': result["count_rate"],
                 })
 
-                trace = counts[self.th260.channel]
-                if self.plotter is not None:
-                    self.plotter.setData(self.th260._timeAxisNs(len(trace)), trace)
-
                 self.avgStepTime.append(time.time() - t0)
                 if hasattr(self, "progress"):
                     self.progress(j, cs.numSteps, np.average(self.avgStepTime))
 
-                print(f"  lambda={wavelength:.2f} nm, {int(trace.sum())} counts, "
-                      f"rate={self.th260.lastCountRate}/s")
+                print(f"  lambda={wavelength:.2f} nm, {int(counts[th.channel].sum())} counts, "
+                      f"rate={th.lastCountRate:.2e}/s")
         finally:
+            self._acquiring = False
             cs.mono.close_shutter()
             cs.shutterState = "Closed"
 
         # Guard: a Stop before the first point would otherwise write a broken file.
         if all_data:
             saveTCSPCHDF5(all_data, name=self.sampleName, region=self.region,
-                          resolution_ps=self.th260.resolutionPs,
-                          tacq_ms=self.th260.tacq, channel=self.th260.channel)
+                          resolution_ps=th.resolutionPs,
+                          tacq_ms=th.tacq, channel=th.channel)
         else:
             print("No data collected -- nothing saved")
 
@@ -92,31 +126,27 @@ class TCSPCSpectral():
 
 
 if __name__ == "__main__":
-    from auto_gui import run_gui, LivePlot
+    from auto_gui import run_gui
 
-    sim = 1
+    sim = 0
     if sim == 1:
-        from hardware import FakeCornerstone as Cornerstone, FakeTH260 as TH260
-        cornerstone = Cornerstone()
-        th260 = TH260()
-    elif sim == 2:
-        # Real client + real helper code, fake board (helpers/build.sh stub).
-        from hardware import FakeCornerstone, TH260
+        from hardware import FakeCornerstone, FakeTH260
         cornerstone = FakeCornerstone()
-        th260 = TH260("/tmp/th260_helper_stub")
+        th260 = FakeTH260()
     else:
-        from hardware import Cornerstone, TH260
+        from hardware import Cornerstone, TH260Direct
         cornerstone = Cornerstone()
-        th260 = TH260()
+        th260 = TH260Direct(TH260_SETTINGS, bin_width_ps=BIN_WIDTH_PS)
 
     scan = TCSPCSpectral(cornerstone, th260)
-    scan.plotter = LivePlot(title="TCSPC decay (current wavelength)",
-                            xlabel="time (ns)", ylabel="counts",
-                            mode="replace")
+    scan.rateDisplay = makeRateDisplay()
+    scan.setBinWidth(BIN_WIDTH_PS)
+    scan.startLiveView()
 
     run_gui(
         automation=scan,
         run=scan._spectralScan,
-        hardware=[cornerstone, th260],
+        hardware=[cornerstone, th260, scan],
         title="TCSPC Spectral Scan",
     )
+    scan.stopLiveView()
