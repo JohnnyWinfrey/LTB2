@@ -73,6 +73,69 @@ class ArduinoClient:
     
         return 0
 
+class SMC100Bus:
+    """
+    Serial link to a chain of Newport SMC100 controllers (CC or PP).
+
+    Daisy-chained controllers all hang off ONE COM port and are told apart by
+    their address (1-31, set on each controller's front panel / via the CC
+    command). Every command is "<addr><CMD><arg>\\r\\n" and every query reply
+    echoes "<addr><CMD>" before the value.
+
+    Several axes share one bus: get it with SMC100Bus.shared(port) so all axes
+    on a port reuse the same handle, and give it back with release(). The lock
+    keeps one write+read pair atomic, so a GUI button and a running automation
+    can talk to different axes on the same port without interleaving replies.
+    """
+    BAUD = 57600
+    _open = {}    # port -> SMC100Bus
+
+    def __init__(self, port, timeout_s=0.5):
+        import serial
+        import threading
+
+        self.port = port
+        self._lock = threading.Lock()
+        self._users = 0
+        self.ser = serial.Serial(port, self.BAUD, bytesize=8, parity="N",
+                                 stopbits=1, xonxoff=True, timeout=timeout_s)
+
+    @classmethod
+    def shared(cls, port):
+        bus = cls._open.get(port)
+        if bus is None:
+            bus = cls._open[port] = cls(port)
+        bus._users += 1
+        return bus
+
+    def release(self):
+        self._users -= 1
+        if self._users <= 0:
+            self._open.pop(self.port, None)
+            self.ser.close()
+
+    def send(self, addr, cmd, arg=""):
+        with self._lock:
+            self.ser.write(f"{addr}{cmd}{arg}\r\n".encode("ascii"))
+
+    def query(self, addr, cmd):
+        """Send "<addr><cmd>" and return the value after the echoed prefix.
+
+        Pass the command exactly as the manual spells it: "TS", "TP", "TE"
+        and "VE" have no "?", parameter reads do ("VA?", "SL?").
+        """
+        prefix = f"{addr}{cmd.rstrip('?')}"
+        with self._lock:
+            self.ser.reset_input_buffer()
+            self.ser.write(f"{addr}{cmd}\r\n".encode("ascii"))
+            reply = self.ser.read_until(b"\r\n").decode("ascii", "replace").strip()
+        if not reply:
+            raise TimeoutError(f"SMC100 #{addr} on {self.port}: no reply to {addr}{cmd}")
+        if not reply.startswith(prefix):
+            raise RuntimeError(f"SMC100 #{addr} on {self.port}: bad reply {reply!r} to {addr}{cmd}")
+        return reply[len(prefix):]
+
+
 class CornerstoneClient:
     def __init__(self, exe_path: str):
         self.proc = _LineProcess(exe_path)

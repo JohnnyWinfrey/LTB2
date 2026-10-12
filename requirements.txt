@@ -9,7 +9,7 @@ pandas
 matplotlib
 
 # Real hardware only (sim = 0); not needed to run scripts with the fakes
-pyserial      # Arduino serial: DeathStar / XWing / PMT stages
+pyserial      # Arduino serial (DeathStar / XWing / PMT) + Newport SMC100
 niscope       # NI digitizer (Digitizer.measure)
 seabreeze     # spectrometer (SpectreCore)
 pyvisa        # Thorlabs power meter (PowerMeter)
