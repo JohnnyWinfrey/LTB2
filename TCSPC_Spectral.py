@@ -7,7 +7,7 @@ file. The count rate is shown live as a number throughout (between steps too,
 while the monochromator moves and settles). Set sim = 0 for real hardware,
 sim = 1 for the fake monochromator and board.
 
-The TH260 is driven straight through th260lib64.dll (hardware.TH260Direct) with
+The TH260 is driven straight through th260lib64.dll (hardware.TH260) with
 the board settings below; the bin width can also be changed with setBinWidth.
 """
 import time
@@ -132,11 +132,11 @@ if __name__ == "__main__":
     if sim == 1:
         from hardware import FakeCornerstone, FakeTH260
         cornerstone = FakeCornerstone()
-        th260 = FakeTH260()
+        th260 = FakeTH260(bin_width_ps=BIN_WIDTH_PS)
     else:
-        from hardware import Cornerstone, TH260Direct
+        from hardware import Cornerstone, TH260
         cornerstone = Cornerstone()
-        th260 = TH260Direct(TH260_SETTINGS, bin_width_ps=BIN_WIDTH_PS)
+        th260 = TH260(TH260_SETTINGS, bin_width_ps=BIN_WIDTH_PS)
 
     scan = TCSPCSpectral(cornerstone, th260)
     scan.rateDisplay = makeRateDisplay()

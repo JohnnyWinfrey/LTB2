@@ -6,7 +6,7 @@ Start acquires one decay histogram, redrawing it as it builds up. addRun keeps
 the last histogram and overplots it; saveRuns writes every kept run to one HDF5
 file. Set sim = 0 for real hardware, sim = 1 for the fake board.
 
-Real hardware is driven straight through th260lib64.dll (hardware.TH260Direct).
+Real hardware is driven straight through th260lib64.dll (hardware.TH260).
 The board settings are fixed for this configuration and hard-coded below; only
 the bin width can be changed, with setBinWidth. The histogram is summed from
 chunks of chunkMs until tacq of photon time has been collected, redrawing after
@@ -203,10 +203,10 @@ if __name__ == "__main__":
     sim = 0
     if sim == 1:
         from hardware import FakeTH260
-        th260 = FakeTH260()
+        th260 = FakeTH260(bin_width_ps=BIN_WIDTH_PS)
     else:
-        from hardware import TH260Direct
-        th260 = TH260Direct(TH260_SETTINGS, bin_width_ps=BIN_WIDTH_PS)
+        from hardware import TH260
+        th260 = TH260(TH260_SETTINGS, bin_width_ps=BIN_WIDTH_PS)
 
     live = TCSPCLive(th260)
     live.rateDisplay = makeRateDisplay()

@@ -11,17 +11,14 @@ import numpy as np
 class _LineProcess:
     """
     Minimal line-oriented subprocess wrapper (stdin/stdout).
-    Used for th260_helper.exe and stage_helper.exe.
+    Used for cornerstone_helper.exe.
     """
-    def __init__(self, exe_path, capture_stderr=True):
-        # capture_stderr=False keeps the helper's diagnostics off the pipe we
-        # read responses from. Helpers that print to stderr (th260) need it;
-        # the others fold stderr into stdout as they always have.
+    def __init__(self, exe_path):
         self.exe_path = exe_path
         self.p = subprocess.Popen(
             [exe_path],
             stdin=subprocess.PIPE, stdout=subprocess.PIPE,
-            stderr=subprocess.STDOUT if capture_stderr else subprocess.DEVNULL,
+            stderr=subprocess.STDOUT,
             text=True, encoding="utf-8", bufsize=1
         )
         greet = self.p.stdout.readline()
@@ -103,119 +100,101 @@ class CornerstoneClient:
         self.proc.close()
 
 class StageClient:
-    """Wrapper for stage_helper.exe (dynamic-loaded Kinesis, serials hardcoded in the EXE)"""
-    def __init__(self):
-        self.proc = _LineProcess("helpers/stage_helper_ultra.exe")
+    """
+    Direct ctypes driver for the two Thorlabs KPZ101 K-Cube piezo controllers
+    (X and Y) via the Kinesis Thorlabs.MotionControl.KCube.Piezo.dll -- the same
+    approach as Thorlabs' Kinesis Python examples. Replaces the old
+    stage_helper_ultra.exe; the DLLs it needs ship in helpers/.
+
+    Output voltages are raw DAC codes, 0..32767 = 0..max output voltage.
+    """
+
+    DLL_DIR = "helpers"
+    DLL_NAME = "Thorlabs.MotionControl.KCube.Piezo.dll"
+    SERIAL_X = "29503259"
+    SERIAL_Y = "29500307"
+    POLL_MS = 200
+    DAC_MAX = 32767
+
+    def __init__(self, dll_dir=DLL_DIR):
+        import ctypes as ct
+        self._ct = ct
+        dll_dir = os.path.abspath(dll_dir)
+        # The piezo DLL loads DeviceManager.dll from its own folder.
+        self._dll_dir_handle = os.add_dll_directory(dll_dir)
+        self.lib = ct.CDLL(os.path.join(dll_dir, self.DLL_NAME))
+        for fn in ("PCC_Open", "PCC_Close", "PCC_StopPolling", "PCC_Enable",
+                   "PCC_Disable", "PCC_CheckConnection"):
+            getattr(self.lib, fn).argtypes = [ct.c_char_p]
+        self.lib.PCC_StartPolling.argtypes = [ct.c_char_p, ct.c_int]
+        self.lib.PCC_SetMaxOutputVoltage.argtypes = [ct.c_char_p, ct.c_short]
+        self.lib.PCC_SetOutputVoltage.argtypes = [ct.c_char_p, ct.c_short]
+        self.lib.PCC_CheckConnection.restype = ct.c_bool
+        self.lib.PCC_StartPolling.restype = ct.c_bool
+        self.sx = self.sy = None
+
+    def _try(self, retcode, name):
+        if retcode != 0:
+            raise RuntimeError(f"{name} failed (Kinesis error {retcode})")
 
     def open(self, serial_x=None, serial_y=None, vmax_tenths=750):
-        # If no serials given, the helper uses its hardcoded defaults
-        if serial_x and serial_y:
-            self.proc.send(f"open {serial_x} {serial_y} {vmax_tenths}")
-        else:
-            self.proc.send(f"open {vmax_tenths}")
-
-    def move_ix(self, ix, iy, width, height):
-        self.proc.send(f"move_ix {ix} {iy} {width} {height}")
-
-    def reset(self, ix, width):
-        self.proc.send(f"stage_reset {ix} {width}")
+        """Open, enable and zero both axes. vmax_tenths is the max output
+        voltage in tenths of a volt (750 = 75.0 V)."""
+        self.sx = (serial_x or self.SERIAL_X).encode()
+        self.sy = (serial_y or self.SERIAL_Y).encode()
+        self._try(self.lib.TLI_BuildDeviceList(), "TLI_BuildDeviceList")
+        for s in (self.sx, self.sy):
+            self._try(self.lib.PCC_Open(s), f"PCC_Open({s.decode()})")
+            self.lib.PCC_StartPolling(s, self.POLL_MS)
+            time.sleep(0.5)  # let polling fill in the device state
+            self._try(self.lib.PCC_Enable(s), f"PCC_Enable({s.decode()})")
+            self._try(self.lib.PCC_SetMaxOutputVoltage(s, int(vmax_tenths)),
+                      f"PCC_SetMaxOutputVoltage({s.decode()})")
+        self.setdac(0, 0)
 
     def setdac(self, vx_code, vy_code):
-        self.proc.send(f"setdac {vx_code} {vy_code}")
+        self._try(self.lib.PCC_SetOutputVoltage(self.sx, int(vx_code)), "PCC_SetOutputVoltage X")
+        self._try(self.lib.PCC_SetOutputVoltage(self.sy, int(vy_code)), "PCC_SetOutputVoltage Y")
+
+    def move_ix(self, ix, iy, width, height):
+        """Map pixel index (0..width-1, 0..height-1) to DAC codes."""
+        vx = ix * self.DAC_MAX // width if width > 0 else 0
+        vy = iy * self.DAC_MAX // height if height > 0 else 0
+        self.setdac(vx, vy)
+
+    def reset(self, ix, width):
+        """Step the X axis back from pixel ix to 0 one pixel at a time."""
+        for i in range(ix, -1, -1):
+            vx = i * self.DAC_MAX // width if width > 0 else 0
+            self.lib.PCC_SetOutputVoltage(self.sx, vx)
 
     def status(self):
-        r = self.proc.send("status")
-        # r: "OK X=<0|1> Y=<0|1>"
-        return dict(kv.split("=") for kv in r[3:].split())
+        """{'X': '0'|'1', 'Y': '0'|'1'} -- 1 = connected."""
+        return {"X": str(int(self.lib.PCC_CheckConnection(self.sx))),
+                "Y": str(int(self.lib.PCC_CheckConnection(self.sy)))}
 
     def disable(self):
-        try:
-            self.proc.send("disable")
-        except Exception:
-            pass
+        for s in (self.sx, self.sy):
+            if s:
+                try:
+                    self.lib.PCC_Disable(s)
+                except Exception:
+                    pass
 
     def close(self):
         try:
             self.disable()
         finally:
-            self.proc.close()
-
-class TH260Client:
-    """
-    Wrapper for th260_helper_ultra.exe. The helper returns the histogram on its
-    response line and writes no files -- saving is Python's job (see
-    th260_helpers.saveTCSPCHDF5).
-
-    Protocol:
-      - init                     -> OK RES=<ps> CH=<n> LEN=<histlen>
-      - info                     -> OK RES=<ps> CH=<n> LEN=<histlen>
-      - measure <tacq_ms> <bins> -> OK RES=... CH=... LEN=... SYNC=... CR=...
-                                       OVF=... DATA=<ch0>;<ch1>
-      - exit
-    """
-
-    def __init__(self, exe_path="helpers/th260_helper_ultra.exe"):
-        # The helper puts diagnostics on stderr; folding them into stdout would
-        # desync the line protocol.
-        self.proc = _LineProcess(exe_path, capture_stderr=False)
-
-    @staticmethod
-    def _fields(resp):
-        """'OK A=1 B=2 DATA=...' -> {'A': '1', 'B': '2', 'DATA': '...'}"""
-        out = {}
-        for tok in resp.split():
-            if "=" in tok:
-                key, _, value = tok.partition("=")
-                out[key] = value
-        return out
-
-    def _info_from(self, resp):
-        # LEN is the board's full histogram length, which is not the same as
-        # the number of bins a given measure() asks to have returned.
-        f = self._fields(resp)
-        return {
-            "resolution_ps": float(f.get("RES", 0.0)),
-            "channels": int(f.get("CH", 0)),
-            "hist_len": int(f.get("LEN", 0)),
-        }
-
-    def init(self):
-        """Open and configure the board. Returns resolution/channels/bins."""
-        return self._info_from(self.proc.send("init", timeout=20.0))
-
-    def info(self):
-        return self._info_from(self.proc.send("info"))
-
-    def measure(self, tacq_ms, bins=2000):
-        """One acquisition. Returns the histogram plus the rates that go with it."""
-        timeout = max(10.0, tacq_ms / 1000.0 + 10.0)
-        resp = self.proc.send(f"measure {int(tacq_ms)} {int(bins)}", timeout=timeout)
-        f = self._fields(resp)
-
-        data = f.get("DATA", "")
-        counts = np.array(
-            [[int(v) for v in ch.split(",") if v] for ch in data.split(";") if ch],
-            dtype=np.uint32,
-        )
-
-        result = self._info_from(resp)
-        result.update({
-            "bins": int(counts.shape[1]) if counts.size else 0,
-            "sync_rate": int(f.get("SYNC", 0)),
-            "count_rate": [int(v) for v in f.get("CR", "").split(",") if v],
-            "overflow": f.get("OVF", "0") == "1",
-            "counts": counts,
-        })
-        return result
-
-    def close(self):
-        self.proc.close()
+            for s in (self.sx, self.sy):
+                if s:
+                    self.lib.PCC_StopPolling(s)
+                    self.lib.PCC_Close(s)
+            self.sx = self.sy = None
 
 
 class TH260DLLClient:
     """
-    Direct ctypes driver for the TimeHarp 260 via th260lib64.dll -- a drop-in
-    for TH260Client (same init/info/measure/close) with no helper exe. Based on
+    Direct ctypes driver for the TimeHarp 260 via th260lib64.dll. Based on
     PicoQuant's TH260-Demos histomode.py.
 
     The board settings are not defaulted here: the caller passes every key in
@@ -384,7 +363,7 @@ class TH260DLLClient:
         return sync.value, rates
 
     def measure(self, tacq_ms, bins=2000):
-        """One acquisition. Same return dict as TH260Client.measure."""
+        """One acquisition. Returns the histogram plus the rates that go with it."""
         ct, lib = self._ct, self.lib
         d = ct.c_int(self.dev)
         if bins <= 0 or bins > self.histLen:

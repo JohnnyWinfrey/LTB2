@@ -1,5 +1,37 @@
+"""Device classes for auto_gui, one section per device.
+
+Each section holds the real class followed by its fake. A real class opens its
+transport (serial port, DLL, VISA, ...) in `_connect()`; the fake subclasses it
+and overrides only `_connect()` to plug in a no-op stand-in, so every control
+method is shared and auto_gui builds an identical window either way. Scripts
+pick the fakes with `sim = 1` to run on a laptop with nothing plugged in.
+
+Driver imports (pyvisa, seabreeze, hardware_controllers -> serial/niscope) are
+lazy, inside `_connect()`, so this module imports on any machine.
+"""
 import random
 import numpy as np
+
+
+class _FakeArduinoClient:
+    """No-op stand-in for ArduinoClient (DeathStar / XWing / PMTShield fakes)."""
+
+    def __init__(self, *args, **kwargs):
+        pass
+
+    def commandSend(self, command):
+        return ""
+
+    def serialRead(self):
+        return ""
+
+    def serialClose(self):
+        return 0
+
+
+# ──────────────────────────────────────────────────────────────────────────
+# Power meter
+# ──────────────────────────────────────────────────────────────────────────
 
 class PowerMeter:
     """Real Thorlabs power meter over pyvisa/USB."""
@@ -9,34 +41,25 @@ class PowerMeter:
         self.rm    = None
         self.instr = None
 
-    def open(self, wl):
-        """Open the resource manager + instrument and apply one-time config."""
-        # Import lazily so this module still imports on a machine without
-        # pyvisa (the fake path never touches it).
+    def _connect(self):
         import pyvisa
 
-        # Opens a resource manager
         self.rm = pyvisa.ResourceManager()
-
-        # Opens the connection to the device. self.instr is the handle.
         # !!! The serial number (P00...) and PID (0x8078) must match the
         #     connected device. Check with the Windows Device Manager.
         self.instr = self.rm.open_resource(
             'USB0::0x1313::0x8078::P0011973::INSTR'
         )
 
-        # print the device information
+    def open(self, wl):
+        """Open the resource manager + instrument and apply one-time config."""
+        self._connect()
         # print(self.instr.query("SYST:SENS:IDN?"))
-
-        # turn on auto-ranging
         self.instr.write("SENS:RANGE:AUTO ON")
-
         self.instr.write(f"SENS:CORR:WAV {wl}")
-        # set units to Watts
         self.instr.write("SENS:POW:UNIT W")
         # set averaging to 1000 points (COUN is the count subcommand)
         self.instr.write("SENS:AVER:COUN 1000")
-
         print("Power meter connected")
 
     def measure(self):
@@ -66,69 +89,29 @@ class PowerMeter:
         print("Power meter closed")
 
 
-class FakePowerMeter:
-    """Drop-in replacement for PowerMeter that returns synthetic readings."""
+class _FakeVisaInstrument:
+    """No-op stand-in for a pyvisa resource; MEAS:POW? returns a random power."""
 
-    def open(self):
-        print("Fake power meter connected")
+    def write(self, command):
+        pass
 
-    def measure(self):
-        power = random.uniform(1e-6, 1e-3)
-        print(f"Measured power = {power}")
-        return power
+    def query(self, command):
+        return str(random.uniform(1e-6, 1e-3))
 
     def close(self):
-        print("Fake power meter closed")
+        pass
 
 
-class FakeDeathStar:
-    """Fake DeathStar rotation stage: no serial / Qt, just tracks angles.
+class FakePowerMeter(PowerMeter):
+    """Headless power meter: real logic reading a fake VISA instrument."""
 
-    Mirrors the full public surface of the real hardware.DeathStar (setPosition,
-    home, resetHome, zHome, setRate, getAngles) so SLIM scans -- which call
-    homeAll() -> resetHome/zHome -- run headless and its auto_gui window matches.
-    """
+    def _connect(self):
+        self.instr = _FakeVisaInstrument()
 
-    def __init__(self, comNum=None, ZAxis=False, id="Fake"):
-        self._thetaP = 0
-        self._thetaW = 0
-        self._z = 0.0
-        self.rate = 10000
-        self.ZAxis = ZAxis
-        self.name = id
-        print(self.name, " FakeDeathStar online")
 
-    def setPosition(self, p_str, w_str, z=""):
-        if z:
-            self._z = float(z)
-        if p_str.strip():
-            self._thetaP = float(p_str)
-        if w_str.strip():
-            self._thetaW = float(w_str)
-        print(self.name, " setting Position ->", self._thetaP, self._thetaW, z)
-
-    def home(self):
-        self._thetaP = 0
-        self._thetaW = 0
-        print(self.name, " Go Home ->", self._thetaP, self._thetaW)
-
-    def resetHome(self):
-        self._thetaP = 0
-        self._thetaW = 0
-        print(self.name, " Set Zero")
-
-    def zHome(self):
-        if self.ZAxis:
-            self._z = 0.0
-            print(self.name, " Z Go Home ->", self._z)
-
-    def setRate(self, rate_str):
-        self.rate = float(rate_str)
-        print(self.name, " rate ->", self.rate)
-
-    def getAngles(self):
-        return f"P={self._thetaP % 360:.2f}   W={self._thetaW % 360:.2f}"
-
+# ──────────────────────────────────────────────────────────────────────────
+# DeathStar -- rotating polarizer + waveplate stage
+# ──────────────────────────────────────────────────────────────────────────
 
 class DeathStar:
     """Rotating polarizer + waveplate stage. QML-free port of cores.DeathStar.
@@ -138,19 +121,22 @@ class DeathStar:
     """
 
     def __init__(self, comNum, ZAxis=False, id="First"):
-        from hardware_controllers import ArduinoClient
         self._thetaP = 0            # polarizer angle
         self._thetaW = 0            # waveplate angle
         self._z = 0.0
         self.rate = 10000
         self.ZAxis = ZAxis
         self.name = id
-        self.ac = ArduinoClient(comNum, 115200)
+        self._connect(comNum)
         # Zero the controller, nudge to prove motion, then return to zero.
         self.ac.commandSend("G10 L20 P1 X0 Y0")
         self.ac.commandSend(f"G1 X15 Y15 F{self.rate}")
         self.ac.commandSend(f"G1 X0 Y0 F{self.rate}")
-        print(self.name, " DeathStar online")
+        print(self.name, f" {type(self).__name__} online")
+
+    def _connect(self, comNum):
+        from hardware_controllers import ArduinoClient
+        self.ac = ArduinoClient(comNum, 115200)
 
     def home(self):
         """Move to the nearest 0th degree."""
@@ -198,11 +184,24 @@ class DeathStar:
         return f"P={self._thetaP % 360:.2f}   W={self._thetaW % 360:.2f}"
 
 
+class FakeDeathStar(DeathStar):
+    """Headless DeathStar: real angle logic driving a fake serial client."""
+
+    def __init__(self, comNum="FAKE", ZAxis=False, id="Fake"):
+        super().__init__(comNum, ZAxis, id)
+
+    def _connect(self, comNum):
+        self.ac = _FakeArduinoClient()
+
+
+# ──────────────────────────────────────────────────────────────────────────
+# XWing -- XY sample stage
+# ──────────────────────────────────────────────────────────────────────────
+
 class XWing:
     """XY sample stage. QML-free port of cores.XWing (ArduinoClient / G-code)."""
 
     def __init__(self, comNum):
-        from hardware_controllers import ArduinoClient
         self._x = 0.0
         self._y = 0.0
         self._home_x = 0.0
@@ -211,8 +210,12 @@ class XWing:
         self.rate = 50
         self.reference = None
         self.samples = []
+        self._connect(comNum)
+        print(f"{type(self).__name__} online")
+
+    def _connect(self, comNum):
+        from hardware_controllers import ArduinoClient
         self.ac = ArduinoClient(comNum, 115200)
-        print("XWing online")
 
     def moveUp(self):
         self._y += self._step
@@ -274,6 +277,20 @@ class XWing:
         return f"X={self._x:.2f}   Y={self._y:.2f}"
 
 
+class FakeXWing(XWing):
+    """Headless XWing: real jog/position logic driving a fake serial client."""
+
+    def __init__(self, comNum="FAKE"):
+        super().__init__(comNum)
+
+    def _connect(self, comNum):
+        self.ac = _FakeArduinoClient()
+
+
+# ──────────────────────────────────────────────────────────────────────────
+# Spectrometer
+# ──────────────────────────────────────────────────────────────────────────
+
 class _SpectrometerLiveView:
     """Mixin: a standalone live spectrum view (start/stop buttons for auto_gui).
 
@@ -327,19 +344,14 @@ class SpectreCore(_SpectrometerLiveView):
 
     Live view is provided by the _SpectrometerLiveView mixin: startLiveView() /
     stopLiveView() open a pyqtgraph window that streams takeSpectrum() frames on
-    a background thread -- the auto_gui-friendly replacement for the old
-    cores.SpectreCore.openLiveView.
+    a background thread.
     """
 
     def __init__(self):
-        from seabreeze.spectrometers import Spectrometer, list_devices
         self.intTime = 500000
-        self.spec = Spectrometer.from_first_available()
-        self.spec.integration_time_micros(self.intTime)
-        self.specInfo = list_devices()[0]
         self.background = 0.0
         self.scansToAvg = 1
-        self._bgCounts = 0.0
+        self.bgCounts = 0.0
 
         # Scan metadata
         self.scanX = 0.0
@@ -348,7 +360,14 @@ class SpectreCore(_SpectrometerLiveView):
         self.region = "A"
         self.sampleName = "sample"
 
-        feat = self.specInfo.features['spectrometer'][0]
+        self._connect()
+        self.spec.integration_time_micros(self.intTime)
+
+    def _connect(self):
+        """Open the device; sets self.spec, intMin/intMax and maxIntensity."""
+        from seabreeze.spectrometers import Spectrometer, list_devices
+        self.spec = Spectrometer.from_first_available()
+        feat = list_devices()[0].features['spectrometer'][0]
         self.intMin, self.intMax = feat.get_integration_time_micros_limits()
         self.maxIntensity = feat.get_maximum_intensity()
         print("Spectrometer Found:", self.spec)
@@ -381,18 +400,22 @@ class SpectreCore(_SpectrometerLiveView):
         self.spec.intensities()
         self.spec.wavelengths()
         self.spec.wavelengths()
-        self.background = self.spec.intensities(correct_dark_counts=True)
+        self._storeBackground(self.spec.intensities(correct_dark_counts=True))
+
+    def _storeBackground(self, background):
+        self.background = background
         sorted_bg = sorted(self.background, reverse=True)
         self._checkOversaturation(sorted_bg[0])
         top_10_count = max(1, len(sorted_bg) // 10)
-        self._bgCounts = sum(sorted_bg[:top_10_count]) / top_10_count
-        print(f"Background updated! Avg top 10%: {self._bgCounts:.2f}")
+        self.bgCounts = sum(sorted_bg[:top_10_count]) / top_10_count
+        print(f"Background updated! Avg top 10%: {self.bgCounts:.2f}")
 
     def takeSpectrum(self):
         wavelengths = self.spec.wavelengths()
         intensities = 0
         for _ in range(self.scansToAvg):
-            intensities += self.spec.intensities(correct_dark_counts=True) - self.background
+            intensities = intensities + (self.spec.intensities(correct_dark_counts=True)
+                                         - self.background)
         intensities = intensities / self.scansToAvg
         return wavelengths, intensities
 
@@ -432,49 +455,36 @@ class SpectreCore(_SpectrometerLiveView):
         return False
 
 
-class FakeSpectreCore(_SpectrometerLiveView):
-    """Synthetic spectrometer: drop-in for SpectreCore with no seabreeze/hardware.
+class _FakeSpectrometer:
+    """No-op stand-in for seabreeze's Spectrometer.
 
-    Exposes the exact same public methods as SpectreCore (including the
-    startLiveView/stopLiveView from _SpectrometerLiveView), so auto_gui builds an
-    identical window. takeSpectrum() returns a synthetic frame -- two Gaussian
-    peaks on a gentle baseline, scaled by integration time, plus noise -- minus
-    whatever background was captured. Lets the whole hyperspectral pipeline and
-    its auto_gui window be exercised on a laptop with nothing plugged in.
+    Frames are two Gaussian peaks on a gentle baseline, scaled by integration
+    time, plus noise. dark() is the same frame without the peaks.
     """
 
+    INT_MIN = 1000
+    INT_MAX = 10_000_000
+    MAX_INTENSITY = 65535
+
     def __init__(self, num_pixels=1044):
-        self.intTime = 500000
-        self.background = 0.0
-        self.scansToAvg = 1
-        self.bgCounts = 0.0
-
-        # Scan metadata (same fields SpectreCore carries)
-        self.scanX = 0.0
-        self.scanY = 0.0
-        self.side = "X"
-        self.region = "A"
-        self.sampleName = "sample"
-
-        # Fake spectrometer limits
-        self.intMin = 1000
-        self.intMax = 10_000_000
-        self.maxIntensity = 65535
-
         # Synthetic wavelength axis (nm): Ocean-style visible/NIR range.
         self._wavelengths = np.linspace(398.0, 1100.0, num_pixels)
-        print("FakeSpectreCore online (synthetic spectra)")
+        self._intTime = 500000
 
-    # --- synthetic-frame helpers --------------------------------------------
+    def integration_time_micros(self, value):
+        self._intTime = value
+
+    def wavelengths(self):
+        return self._wavelengths
+
     def _scale(self):
         """Brightness scale: longer integration time -> more counts."""
-        return self.maxIntensity * (self.intTime / self.intMax)
+        return self.MAX_INTENSITY * (self._intTime / self.INT_MAX)
 
-    def _noise(self, scale, shape):
-        return np.random.normal(0.0, 0.01 * scale + 5.0, size=shape)
+    def _noise(self, scale):
+        return np.random.normal(0.0, 0.01 * scale + 5.0, size=self._wavelengths.shape)
 
-    def _frame(self):
-        """One synthetic intensity frame at the current integration time."""
+    def intensities(self, correct_dark_counts=False):
         wl = self._wavelengths
 
         def gauss(center, width, amp):
@@ -484,95 +494,39 @@ class FakeSpectreCore(_SpectrometerLiveView):
         signal = gauss(488.0, 8.0, 0.6) + gauss(630.0, 14.0, 0.35)
         baseline = 0.02 + 0.01 * (wl - wl.min()) / (wl.max() - wl.min())
         scale = self._scale()
-        frame = (signal + baseline) * scale + self._noise(scale, wl.shape)
-        return np.clip(frame, 0, self.maxIntensity)
+        frame = (signal + baseline) * scale + self._noise(scale)
+        return np.clip(frame, 0, self.MAX_INTENSITY)
 
-    # --- identical surface to SpectreCore -----------------------------------
-    def setIntegration(self, value):
-        try:
-            val = int(value)
-        except ValueError:
-            return
-        if val < self.intMin:
-            print(f"Integration time {val} below minimum ({self.intMin}), clamping")
-            val = self.intMin
-        elif val > self.intMax:
-            print(f"Integration time {val} above maximum ({self.intMax}), clamping")
-            val = self.intMax
-        self.intTime = val
-        print(f"Set Integration Time -> {self.intTime}")
+    def dark(self):
+        scale = self._scale()
+        return np.clip(0.02 * scale + self._noise(scale), 0, self.MAX_INTENSITY)
 
-    def setScansToAvg(self, value):
-        try:
-            self.scansToAvg = max(1, int(value))
-        except ValueError:
-            return
-        print(f"Scans to average -> {self.scansToAvg}")
+
+class FakeSpectreCore(SpectreCore):
+    """Headless spectrometer: real logic reading synthetic spectra."""
+
+    def _connect(self):
+        self.spec = _FakeSpectrometer()
+        self.intMin = _FakeSpectrometer.INT_MIN
+        self.intMax = _FakeSpectrometer.INT_MAX
+        self.maxIntensity = _FakeSpectrometer.MAX_INTENSITY
+        print("FakeSpectreCore online (synthetic spectra)")
 
     def takeBackground(self):
-        # A dark frame: baseline + noise, no peaks.
-        wl = self._wavelengths
-        scale = self._scale()
-        self.background = np.clip(
-            0.02 * scale + self._noise(scale, wl.shape), 0, self.maxIntensity
-        )
-        sorted_bg = sorted(self.background, reverse=True)
-        self._checkOversaturation(sorted_bg[0])
-        top_10_count = max(1, len(sorted_bg) // 10)
-        self.bgCounts = sum(sorted_bg[:top_10_count]) / top_10_count
-        print(f"Background updated! Avg top 10%: {self.bgCounts:.2f}")
+        # The real background is taken with the light blocked; a dark frame
+        # keeps the synthetic peaks visible after subtraction.
+        self._storeBackground(self.spec.dark())
 
-    def takeSpectrum(self):
-        wavelengths = self._wavelengths
-        intensities = 0
-        for _ in range(self.scansToAvg):
-            intensities = intensities + (self._frame() - self.background)
-        intensities = intensities / self.scansToAvg
-        return wavelengths, intensities
 
-    def setScanX(self, value):
-        try:
-            self.scanX = float(value)
-        except ValueError:
-            return
-        print(f"Scan X -> {self.scanX}")
-
-    def setScanY(self, value):
-        try:
-            self.scanY = float(value)
-        except ValueError:
-            return
-        print(f"Scan Y -> {self.scanY}")
-
-    def setSide(self, value):
-        self.side = value
-        print(f"Side -> {self.side}")
-
-    def setRegion(self, value):
-        self.region = value
-        print(f"Region -> {self.region}")
-
-    def setSampleName(self, value):
-        self.sampleName = value
-        print(f"Sample Name -> {self.sampleName}")
-
-    def getBackgroundCounts(self):
-        return f"{self.bgCounts:.2f}"
-
-    def _checkOversaturation(self, maxMI):
-        if maxMI >= (self.maxIntensity - 1):
-            print("WARNING: MEASUREMENT OVERSATURATED")
-            return True
-        return False
-
+# ──────────────────────────────────────────────────────────────────────────
+# Cornerstone -- monochromator
+# ──────────────────────────────────────────────────────────────────────────
 
 class Cornerstone:
     """Monochromator. QML-free port of cores.Cornerstone (CornerstoneClient)."""
 
     def __init__(self, exe_path="helpers/cornerstone_helper.exe"):
-        from hardware_controllers import CornerstoneClient
-        self.mono = CornerstoneClient(exe_path)
-        self.mono.open()
+        self._connect(exe_path)
         self.targetWavelength = 630
         self.shutterState = "Closed"
         self.startWavelength = 600
@@ -580,7 +534,12 @@ class Cornerstone:
         self.numSteps = 50
         self.currentGrating = 3
         self.currentWavelength = 0.0
-        print("Cornerstone online")
+        print(f"{type(self).__name__} online")
+
+    def _connect(self, exe_path):
+        from hardware_controllers import CornerstoneClient
+        self.mono = CornerstoneClient(exe_path)
+        self.mono.open()
 
     def setStartWavelength(self, value_str):
         self.startWavelength = float(value_str)
@@ -617,14 +576,56 @@ class Cornerstone:
         return self.shutterState
 
 
+class _FakeMono:
+    """No-op stand-in for CornerstoneClient; remembers the last goto target."""
+
+    def __init__(self, *args, **kwargs):
+        self._pos = 0.0
+
+    def open(self):
+        pass
+
+    def goto(self, nm):
+        self._pos = float(nm)
+
+    def position(self):
+        return self._pos
+
+    def open_shutter(self):
+        pass
+
+    def close_shutter(self):
+        pass
+
+    def close(self):
+        pass
+
+
+class FakeCornerstone(Cornerstone):
+    """Headless monochromator: real logic driving a fake helper process."""
+
+    def __init__(self, exe_path="FAKE"):
+        super().__init__(exe_path)
+
+    def _connect(self, exe_path):
+        self.mono = _FakeMono()
+
+
+# ──────────────────────────────────────────────────────────────────────────
+# PMT gain shield
+# ──────────────────────────────────────────────────────────────────────────
+
 class PMTShield:
     """PMT gain shield. QML-free port of cores.PMTShield (ArduinoClient)."""
 
     def __init__(self, comNum="COM4"):
-        from hardware_controllers import ArduinoClient
         self._gain = 0.0
+        self._connect(comNum)
+        print(f"{type(self).__name__} online")
+
+    def _connect(self, comNum):
+        from hardware_controllers import ArduinoClient
         self.pmt = ArduinoClient(comNum, 115200)
-        print("PMT Gain Shield Online")
 
     def changeGain(self, desiredGain):
         self._gain = float(desiredGain)
@@ -634,6 +635,20 @@ class PMTShield:
     def getGain(self):
         return f"{self._gain:.3f}"
 
+
+class FakePMTShield(PMTShield):
+    """Headless PMT gain shield: real logic driving a fake serial client."""
+
+    def __init__(self, comNum="FAKE"):
+        super().__init__(comNum)
+
+    def _connect(self, comNum):
+        self.pmt = _FakeArduinoClient()
+
+
+# ──────────────────────────────────────────────────────────────────────────
+# Digitizer
+# ──────────────────────────────────────────────────────────────────────────
 
 class Digitizer:
     """NI digitizer: one averaged-voltage reading. QML-free port of the
@@ -645,9 +660,12 @@ class Digitizer:
     """
 
     def __init__(self):
+        self._connect()
+        print(f"{type(self).__name__} online")
+
+    def _connect(self):
         from hardware_controllers import NIScopeClient
         self.scope = NIScopeClient()
-        print("Digitizer online")
 
     def measure(self):
         voltage = self.scope.record()
@@ -655,16 +673,34 @@ class Digitizer:
         return voltage
 
 
-class TH260:
-    """TimeHarp 260 TCSPC board via helpers/th260_helper_ultra.exe.
+class _FakeScope:
+    """No-op stand-in for NIScopeClient: a random voltage in a plausible range."""
 
-    The helper returns the histogram over its line protocol; this class holds
-    the acquisition settings and hands raw arrays to the automation.
+    def record(self):
+        return random.uniform(0.0, 10.0)
+
+
+class FakeDigitizer(Digitizer):
+    """Headless digitizer: real logic reading a fake scope."""
+
+    def _connect(self):
+        self.scope = _FakeScope()
+
+
+# ──────────────────────────────────────────────────────────────────────────
+# TH260 -- TimeHarp 260 TCSPC board
+# ──────────────────────────────────────────────────────────────────────────
+
+class TH260:
+    """TimeHarp 260 TCSPC board, driven through th260lib64.dll (TH260DLLClient).
+
+    `settings` must hold every TH260DLLClient.SETTING_KEYS key; the automation
+    file owns them (see TCSPC_Live.py). This class holds the acquisition
+    settings and hands raw arrays to the automation.
     """
 
-    def __init__(self, exe_path="helpers/th260_helper_ultra.exe"):
-        from hardware_controllers import TH260Client
-        self.th = TH260Client(exe_path)
+    def __init__(self, settings, dll_path="helpers/th260lib64.dll", bin_width_ps=200):
+        self._connect(settings, dll_path, bin_width_ps)
         info = self.th.init()
         self.resolutionPs = info["resolution_ps"]
         self.numChannels = info["channels"]
@@ -675,8 +711,10 @@ class TH260:
         self.lastCounts = None
         self.lastCountRate = 0
         self.lastSyncRate = 0
-        print(f"TH260 online -- {self.numChannels} ch, {self.histLen} bins, "
-              f"{self.resolutionPs:.0f} ps")
+
+    def _connect(self, settings, dll_path, bin_width_ps):
+        from hardware_controllers import TH260DLLClient
+        self.th = TH260DLLClient(settings, dll_path, bin_width_ps)
 
     def setTacq(self, value_str):
         self.tacq = int(float(value_str))
@@ -724,77 +762,8 @@ class TH260:
         return f"{self.lastCountRate} /s"
 
 
-class TH260Direct(TH260):
-    """TH260 driven straight through th260lib64.dll (TH260DLLClient) instead of
-    the helper exe. `settings` must hold every TH260DLLClient.SETTING_KEYS key;
-    the automation file owns them (see TCSPC_Live.py)."""
-
-    def __init__(self, settings, dll_path="helpers/th260lib64.dll", bin_width_ps=200):
-        from hardware_controllers import TH260DLLClient
-        self.th = TH260DLLClient(settings, dll_path, bin_width_ps)
-        info = self.th.init()
-        self.resolutionPs = info["resolution_ps"]
-        self.numChannels = info["channels"]
-        self.histLen = info["hist_len"]
-        self.tacq = 5000
-        self.bins = None
-        self.channel = 0
-        self.lastCounts = None
-        self.lastCountRate = 0
-        self.lastSyncRate = 0
-
-
-# ──────────────────────────────────────────────────────────────────────────
-# Fake devices for the QML-free ports (headless / sim mode)
-# ──────────────────────────────────────────────────────────────────────────
-# Each fake subclasses its real plain class and only overrides __init__ to swap
-# the real transport for a no-op stand-in. Every control method is inherited
-# unchanged, so auto_gui builds an identical window and the ported scripts run
-# with `sim = 1` on a laptop with nothing plugged in.
-
-class _FakeArduinoClient:
-    """No-op stand-in for ArduinoClient (used by FakeXWing / FakePMTShield)."""
-
-    def __init__(self, *args, **kwargs):
-        pass
-
-    def commandSend(self, command):
-        return ""
-
-    def serialRead(self):
-        return ""
-
-    def serialClose(self):
-        return 0
-
-
-class _FakeMono:
-    """No-op stand-in for CornerstoneClient; remembers the last goto target."""
-
-    def __init__(self, *args, **kwargs):
-        self._pos = 0.0
-
-    def open(self):
-        pass
-
-    def goto(self, nm):
-        self._pos = float(nm)
-
-    def position(self):
-        return self._pos
-
-    def open_shutter(self):
-        pass
-
-    def close_shutter(self):
-        pass
-
-    def close(self):
-        pass
-
-
 class _FakeTH260Client:
-    """No-op stand-in for TH260Client: synthetic single-exponential decay."""
+    """No-op stand-in for TH260DLLClient: synthetic single-exponential decay."""
 
     RESOLUTION_PS = 200.0
     CHANNELS = 2
@@ -812,6 +781,8 @@ class _FakeTH260Client:
         return self.init()
 
     def measure(self, tacq_ms, bins=2000):
+        if bins <= 0 or bins > self.HISTLEN:
+            bins = self.HISTLEN  # clamp like the real client
         t0 = 40
         j = np.arange(bins)
         dt = np.clip(j - t0, 0, None)
@@ -844,72 +815,13 @@ class _FakeTH260Client:
         pass
 
 
-class FakeXWing(XWing):
-    """Headless XWing: real jog/position logic driving a fake serial client."""
-
-    def __init__(self, comNum="FAKE"):
-        self._x = 0.0
-        self._y = 0.0
-        self._home_x = 0.0
-        self._home_y = 0.0
-        self._step = 0.1
-        self.rate = 50
-        self.reference = None
-        self.samples = []
-        self.ac = _FakeArduinoClient()
-        print("FakeXWing online")
-
-
-class FakeCornerstone(Cornerstone):
-    """Headless monochromator: real logic driving a fake helper process."""
-
-    def __init__(self, exe_path="FAKE"):
-        self.mono = _FakeMono()
-        self.targetWavelength = 630
-        self.shutterState = "Closed"
-        self.startWavelength = 600
-        self.endWavelength = 800
-        self.numSteps = 50
-        self.currentGrating = 3
-        self.currentWavelength = 0.0
-        print("FakeCornerstone online")
-
-
-class FakePMTShield(PMTShield):
-    """Headless PMT gain shield: real logic driving a fake serial client."""
-
-    def __init__(self, comNum="FAKE"):
-        self._gain = 0.0
-        self.pmt = _FakeArduinoClient()
-        print("FakePMTShield online")
-
-
-class FakeDigitizer(Digitizer):
-    """Synthetic digitizer: returns a random voltage in a plausible range."""
-
-    def __init__(self):
-        self.scope = None
-        print("FakeDigitizer online")
-
-    def measure(self):
-        voltage = random.uniform(0.0, 10.0)
-        print(f"Digitizer measured {voltage:.4f} V")
-        return voltage
-
-
 class FakeTH260(TH260):
-    """Headless TCSPC board: real logic driving a fake helper process."""
+    """Headless TCSPC board: real logic driving a synthetic-decay client."""
 
-    def __init__(self, exe_path="FAKE"):
-        self.th = _FakeTH260Client()
-        info = self.th.init()
-        self.resolutionPs = info["resolution_ps"]
-        self.numChannels = info["channels"]
-        self.histLen = info["hist_len"]
-        self.tacq = 5000
-        self.bins = None
-        self.channel = 0
-        self.lastCounts = None
-        self.lastCountRate = 0
-        self.lastSyncRate = 0
+    def __init__(self, settings=None, dll_path="FAKE", bin_width_ps=200):
+        super().__init__(settings, dll_path, bin_width_ps)
         print("FakeTH260 online")
+
+    def _connect(self, settings, dll_path, bin_width_ps):
+        self.th = _FakeTH260Client()
+        self.th.setBinWidth(bin_width_ps)

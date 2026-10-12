@@ -23,7 +23,7 @@ class SLIMCalibration():
         psa_waveplate_angles = []
         try:
             # Open the meter once at the start of the run.
-            self.powerMeter.open()
+            self.powerMeter.open(488)  # meter wavelength correction, nm
             for i in range(len(psg_waveplate_angles)):
                 # Cooperative stop: auto_gui's Stop button sets self._stop.
                 if getattr(self, "_stop", False):
