@@ -92,8 +92,8 @@ class SMC100ChainTest():
 if __name__ == "__main__":
     from auto_gui import run_gui
 
-    sim = 1
-    port = "COM5"
+    sim = 0
+    port = "/dev/cu.usbserial-FTE4GWPV"
     addresses = [1, 2]     # one entry per controller on the chain
     if sim:
         from hardware import FakeSMC100 as SMC100

@@ -117,6 +117,9 @@ class SMC100Bus:
     def send(self, addr, cmd, arg=""):
         with self._lock:
             self.ser.write(f"{addr}{cmd}{arg}\r\n".encode("ascii"))
+            # Wait until it's on the wire: on macOS the reset_input_buffer() in
+            # the next query() also discards unsent output, truncating this command.
+            self.ser.flush()
 
     def query(self, addr, cmd):
         """Send "<addr><cmd>" and return the value after the echoed prefix.
