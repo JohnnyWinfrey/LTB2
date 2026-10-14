@@ -58,7 +58,7 @@ class SLIMEdgeLP():
         return all_data
 
 
-TITLE = "SLIM Planar Diffraction (LP)"
+TITLE = "Planar Diffraction (LP)"
 
 
 def main(sim=False):

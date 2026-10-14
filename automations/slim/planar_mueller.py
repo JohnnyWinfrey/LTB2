@@ -112,7 +112,7 @@ class SLIMPlanarMueller():
         return points
 
 
-TITLE = "SLIM Planar Mueller"
+TITLE = "Planar Mueller"
 
 
 def main(sim=False):

@@ -58,7 +58,7 @@ class SLIMPowerCurve():
         return (intensities, psg_angles)
 
 
-TITLE = "SLIM Power Curve"
+TITLE = "Power Curve"
 
 
 def main(sim=False):

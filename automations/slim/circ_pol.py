@@ -54,7 +54,7 @@ class SLIMEdgeCP():
         return all_data
 
 
-TITLE = "SLIM CircPol"
+TITLE = "CircPol"
 
 
 def main(sim=False):

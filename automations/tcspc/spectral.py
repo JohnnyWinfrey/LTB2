@@ -125,7 +125,7 @@ class TCSPCSpectral(TH260RateView):
         return all_data
 
 
-TITLE = "TCSPC Spectral Scan"
+TITLE = "Spectral TCSPC"
 
 
 def main(sim=False):

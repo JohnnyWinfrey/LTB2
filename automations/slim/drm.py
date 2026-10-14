@@ -67,7 +67,7 @@ class SLIMDRMCalibration():
         return all_data
 
 
-TITLE = "SLIM DRM Calibration"
+TITLE = "DRM Calibration"
 
 
 def main(sim=False):

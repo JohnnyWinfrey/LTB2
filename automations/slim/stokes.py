@@ -57,7 +57,7 @@ class SLIMStokes():
         return all_data
 
 
-TITLE = "SLIM Stokes"
+TITLE = "Stokes"
 
 
 def main(sim=False):
