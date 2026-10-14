@@ -3,7 +3,7 @@ import time
 import numpy as np
 import pandas as pd
 
-from slim_helpers import progressBarCoolStyle
+from .helpers import progressBarCoolStyle
 
 
 class SLIMPowerCurve():
@@ -58,23 +58,15 @@ class SLIMPowerCurve():
         return (intensities, psg_angles)
 
 
-if __name__ == "__main__":
-    import sys
+TITLE = "SLIM Power Curve"
+
+
+def main(sim=False):
     from auto_gui import run_gui, LivePlot
+    from . import experiment
 
-    sim = 0#"--sim" in sys.argv
-    if sim:
-        from hardware import FakeDeathStar as DeathStar, FakePowerMeter as Meter
-        psg = DeathStar(id="PSG")
-        meter = Meter()
-    else:
-        from hardware import DeathStar
-        from hardware import PowerMeter as Meter
-        psg = DeathStar("COM10", False, "PSG")
-        meter = Meter()
-
+    psg, meter = experiment.psg(sim), experiment.power_meter(sim)
     slim = SLIMPowerCurve(psg, meter)
-
     slim.plotter = LivePlot(title="SLIM sweep", xlabel="PSG angle (deg)",
                             ylabel="intensity", mode="append")
 
@@ -82,5 +74,10 @@ if __name__ == "__main__":
         automation=slim,
         run=slim._powerCurve,
         hardware=[psg, meter],
-        title="SLIM Calibration",
+        title=TITLE,
     )
+
+
+if __name__ == "__main__":
+    import sys
+    main(sim="--sim" in sys.argv)

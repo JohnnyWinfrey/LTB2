@@ -7,7 +7,7 @@ same optical train the rig uses ::
     analyzer(0 deg) . QWP(5*theta) . M_sample . QWP(theta) . polarizer(0 deg)
 
 for theta = 0..360 in 61 steps, per wavelength. The data file is written
-through slim_helpers.saveMuellerHDF5, so its layout matches a real run.
+through automations.slim.helpers.saveMuellerHDF5, so its layout matches a real run.
 
 Instrument realism is taken from a reference scan (a real single-point
 muellerScan h5, --reference): its wavelength axis is reused verbatim
@@ -39,7 +39,7 @@ import numpy as np
 import h5py
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-from slim_helpers import saveMuellerHDF5
+from automations.slim.helpers import saveMuellerHDF5
 
 
 # ──────────────────────────────────────────────────────────────────────────

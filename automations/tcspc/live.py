@@ -1,10 +1,10 @@
 """TCSPC live view -- standalone auto_gui launcher.
 
-Run: python TCSPC_Live.py
+Run: python -m automations.tcspc.live [--sim]
 No monochromator: the TimeHarp 260 count rate is shown live as a number, and
 Start acquires one decay histogram, redrawing it as it builds up. addRun keeps
 the last histogram and overplots it; saveRuns writes every kept run to one HDF5
-file. Set sim = 0 for real hardware, sim = 1 for the fake board.
+file. --sim uses the fake board.
 
 Real hardware is driven straight through th260lib64.dll (hardware.TH260).
 The board settings are fixed for this configuration and hard-coded below; only
@@ -14,7 +14,7 @@ each chunk.
 """
 import numpy as np
 
-from th260_helpers import TH260RateView, makeRateDisplay, saveTCSPCRunsHDF5
+from .helpers import TH260RateView, makeRateDisplay, saveTCSPCRunsHDF5
 
 
 # ─────────────────────────────────────────────────────────────────────────
@@ -197,17 +197,14 @@ class TCSPCLive(TH260RateView):
                           channel=self.th260.channel)
 
 
-if __name__ == "__main__":
+TITLE = "TCSPC Live"
+
+
+def main(sim=False):
     from auto_gui import run_gui
+    from . import experiment
 
-    sim = 0
-    if sim == 1:
-        from hardware import FakeTH260
-        th260 = FakeTH260(bin_width_ps=BIN_WIDTH_PS)
-    else:
-        from hardware import TH260
-        th260 = TH260(TH260_SETTINGS, bin_width_ps=BIN_WIDTH_PS)
-
+    th260 = experiment.th260(TH260_SETTINGS, BIN_WIDTH_PS, sim)
     live = TCSPCLive(th260)
     live.rateDisplay = makeRateDisplay()
     live.plotter = _makeHistogramPlot(title="TCSPC histogram",
@@ -219,6 +216,11 @@ if __name__ == "__main__":
         automation=live,
         run=live._acquireHistogram,
         hardware=[th260, live],
-        title="TCSPC Live",
+        title=TITLE,
     )
     live.stopLiveView()
+
+
+if __name__ == "__main__":
+    import sys
+    main(sim="--sim" in sys.argv)

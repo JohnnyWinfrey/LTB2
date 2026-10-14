@@ -4,7 +4,7 @@ Each module holds the device's transport (serial port, DLL, VISA, ...), the
 real class, and its fake. A real class opens its transport in `_connect()`;
 the fake subclasses it and overrides only `_connect()` to plug in a no-op
 stand-in, so every control method is shared and auto_gui builds an identical
-window either way. Scripts pick the fakes with `sim = 1` to run on a laptop
+window either way. Automations pick the fakes with --sim to run on a laptop
 with nothing plugged in.
 
 Driver imports (pyvisa, seabreeze, serial, niscope) are lazy, inside the

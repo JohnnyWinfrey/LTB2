@@ -1,16 +1,18 @@
 """Hyperspectral extinction scan -- standalone auto_gui launcher.
 
-Run: python extinction.py
+Run: python -m automations.hyperspectral.extinction [--sim]
 Scans the reference position once (servoing PMT gain to a target voltage at
 each wavelength), then every sample position with those locked gains, and writes
 a CSV. Reference + sample positions are hardcoded in __main__ (edit as needed);
 alternatively jog the XWing window and use its store buttons before Start.
-Set sim = 0 (and real COM ports / helper exe) for real hardware.
+COM ports are in experiment.py; --sim uses fakes.
 """
 import os
 import csv
 import time
 from datetime import datetime
+
+from automations import DATA_DIR
 
 
 class Extinction():
@@ -122,7 +124,7 @@ class Extinction():
 
     def _extinction(self):
         timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
-        output_dir = os.path.join("data", timestamp)
+        output_dir = os.path.join(DATA_DIR, timestamp)
         os.makedirs(output_dir, exist_ok=True)
         csv_filename = os.path.join(output_dir, 'extinction_scan.csv')
         print(f"Saving data to: {output_dir}")
@@ -158,23 +160,14 @@ class Extinction():
         return all_data
 
 
-if __name__ == "__main__":
-    from auto_gui import run_gui, LivePlot
+TITLE = "Extinction Scan"
 
-    sim = 1
-    if sim:
-        from hardware import (FakeXWing as XWing, FakeCornerstone as Cornerstone,
-                              FakePMTShield as PMTShield, FakeDigitizer as Digitizer)
-        xwing = XWing()
-        cornerstone = Cornerstone()
-        pmt = PMTShield()
-        digi = Digitizer()
-    else:
-        from hardware import XWing, Cornerstone, PMTShield, Digitizer
-        xwing = XWing("COM3")
-        cornerstone = Cornerstone()
-        pmt = PMTShield("COM4")
-        digi = Digitizer()
+
+def main(sim=False):
+    from auto_gui import run_gui, LivePlot
+    from . import experiment
+
+    xwing, cornerstone, pmt, digi = experiment.setup(sim)
 
     # Hardcoded positions -- edit, or jog the XWing window + store buttons instead.
     xwing.reference = {'x': 0.0, 'y': 0.0}
@@ -185,12 +178,17 @@ if __name__ == "__main__":
 
     ext = Extinction(xwing, cornerstone, pmt, digi)
     ext.plotter = LivePlot(title="Extinction (per-position spectrum)",
-                           xlabel="wavelength (nm)", ylabel="voltage (V)",
-                           mode="append")
+                                xlabel="wavelength (nm)", ylabel="voltage (V)",
+                                mode="append")
 
     run_gui(
         automation=ext,
         run=ext._extinction,
         hardware=[xwing, cornerstone, pmt, digi],
-        title="Extinction Scan",
+        title=TITLE,
     )
+
+
+if __name__ == "__main__":
+    import sys
+    main(sim="--sim" in sys.argv)

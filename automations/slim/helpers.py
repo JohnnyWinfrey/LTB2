@@ -5,6 +5,8 @@ from datetime import datetime
 import numpy as np
 import h5py
 
+from automations import DATA_DIR
+
 
 def progressBarCoolStyle(numSteps, currentStep):
     percentDone = (currentStep / numSteps) * 100
@@ -31,7 +33,7 @@ def saveHDF5(all_data, scanType, name="sample", region="A", side="X",
     timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
     name = name or "sample"
 
-    output_dir = os.path.join("data", f"{name}_{timestamp}")
+    output_dir = os.path.join(DATA_DIR, f"{name}_{timestamp}")
     os.makedirs(output_dir, exist_ok=True)
     h5_path = os.path.join(
         output_dir, f"{name}_Region{region}_{side}_{scanType}.h5"
@@ -96,7 +98,7 @@ def saveMuellerHDF5(points, scanType, name="sample", region="A", side="X",
     timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
     name = name or "sample"
 
-    output_dir = os.path.join("data", f"{name}_{timestamp}")
+    output_dir = os.path.join(DATA_DIR, f"{name}_{timestamp}")
     os.makedirs(output_dir, exist_ok=True)
     h5_path = os.path.join(
         output_dir, f"{name}_Region{region}_{side}_{scanType}.h5"

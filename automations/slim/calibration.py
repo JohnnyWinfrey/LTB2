@@ -62,25 +62,15 @@ class SLIMCalibration():
         return (intensities, psg_waveplate_angles, psa_waveplate_angles)
 
 
-if __name__ == "__main__":
-    import sys
+TITLE = "SLIM Calibration"
+
+
+def main(sim=False):
     from auto_gui import run_gui, LivePlot
+    from . import experiment
 
-    sim = 1#"--sim" in sys.argv
-    if sim:
-        from hardware import FakeDeathStar as DeathStar, FakePowerMeter as Meter
-        psg = DeathStar(id="PSG")
-        psa = DeathStar(id="PSA")
-        meter = Meter()
-    else:
-        from hardware import DeathStar
-        from hardware import PowerMeter as Meter
-        psg = DeathStar("COM10", False, "PSG")
-        psa = DeathStar("COM9", True, "PSA")
-        meter = Meter()
-
+    psg, psa, meter = experiment.psg(sim), experiment.psa(sim), experiment.power_meter(sim)
     slim = SLIMCalibration(psg, psa, meter)
-
     slim.plotter = LivePlot(title="SLIM sweep", xlabel="PSG angle (deg)",
                             ylabel="intensity", mode="append")
 
@@ -88,5 +78,10 @@ if __name__ == "__main__":
         automation=slim,
         run=slim._dualRotatingWaveplate,
         hardware=[psg, psa, meter],
-        title="SLIM Calibration",
+        title=TITLE,
     )
+
+
+if __name__ == "__main__":
+    import sys
+    main(sim="--sim" in sys.argv)

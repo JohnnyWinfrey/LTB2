@@ -1,11 +1,11 @@
 """TCSPC spectral scan -- standalone auto_gui launcher.
 
-Run: python TCSPC_Spectral.py
+Run: python -m automations.tcspc.spectral [--sim]
 Sweeps the monochromator across its wavelength range at a single fixed point
 and records a TimeHarp 260 decay histogram at each step, then writes one HDF5
 file. The count rate is shown live as a number throughout (between steps too,
-while the monochromator moves and settles). Set sim = 0 for real hardware,
-sim = 1 for the fake monochromator and board.
+while the monochromator moves and settles). --sim uses the fake
+monochromator and board.
 
 The TH260 is driven straight through th260lib64.dll (hardware.TH260) with
 the board settings below; the bin width can also be changed with setBinWidth.
@@ -14,7 +14,7 @@ import time
 
 import numpy as np
 
-from th260_helpers import TH260RateView, makeRateDisplay, saveTCSPCHDF5
+from .helpers import TH260RateView, makeRateDisplay, saveTCSPCHDF5
 
 
 # ─────────────────────────────────────────────────────────────────────────
@@ -125,19 +125,15 @@ class TCSPCSpectral(TH260RateView):
         return all_data
 
 
-if __name__ == "__main__":
+TITLE = "TCSPC Spectral Scan"
+
+
+def main(sim=False):
     from auto_gui import run_gui
+    from . import experiment
 
-    sim = 0
-    if sim == 1:
-        from hardware import FakeCornerstone, FakeTH260
-        cornerstone = FakeCornerstone()
-        th260 = FakeTH260(bin_width_ps=BIN_WIDTH_PS)
-    else:
-        from hardware import Cornerstone, TH260
-        cornerstone = Cornerstone()
-        th260 = TH260(TH260_SETTINGS, bin_width_ps=BIN_WIDTH_PS)
-
+    cornerstone = experiment.cornerstone(sim)
+    th260 = experiment.th260(TH260_SETTINGS, BIN_WIDTH_PS, sim)
     scan = TCSPCSpectral(cornerstone, th260)
     scan.rateDisplay = makeRateDisplay()
     scan.setBinWidth(BIN_WIDTH_PS)
@@ -147,6 +143,11 @@ if __name__ == "__main__":
         automation=scan,
         run=scan._spectralScan,
         hardware=[cornerstone, th260, scan],
-        title="TCSPC Spectral Scan",
+        title=TITLE,
     )
     scan.stopLiveView()
+
+
+if __name__ == "__main__":
+    import sys
+    main(sim="--sim" in sys.argv)

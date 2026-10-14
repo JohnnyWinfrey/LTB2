@@ -1,6 +1,6 @@
 import time
 import numpy as np
-from slim_helpers import saveHDF5
+from .helpers import saveHDF5
 
 class SLIMStokes():
 
@@ -57,21 +57,14 @@ class SLIMStokes():
         return all_data
 
 
-if __name__ == "__main__":
+TITLE = "SLIM Stokes"
+
+
+def main(sim=False):
     from auto_gui import run_gui, LivePlot
+    from . import experiment
 
-    sim = 0
-    if sim:
-        from hardware import FakeDeathStar as DeathStar, FakeSpectreCore as Spectro
-        psg = DeathStar(id="PSG")
-        psa = DeathStar(ZAxis=True, id="PSA")
-        spectro = Spectro()
-    else:
-        from hardware import DeathStar, SpectreCore as Spectro
-        psg = DeathStar("COM10", False, "PSG")
-        psa = DeathStar("COM9", True, "PSA")
-        spectro = Spectro()
-
+    psg, psa, spectro = experiment.psg(sim), experiment.psa(sim), experiment.spectrometer(sim)
     slim = SLIMStokes(psg, psa, spectro)
     slim.plotter = LivePlot(title="SLIM live spectrum", xlabel="wavelength (nm)",
                             ylabel="counts", mode="replace")
@@ -80,5 +73,10 @@ if __name__ == "__main__":
         automation=slim,
         run=slim._stokes,
         hardware=[psg, psa, spectro],
-        title="SLIM Stokes",
+        title=TITLE,
     )
+
+
+if __name__ == "__main__":
+    import sys
+    main(sim="--sim" in sys.argv)

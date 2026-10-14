@@ -1,6 +1,3 @@
-from hardware import SMC100 
-import time
-from auto_gui import run_gui
 
 class DualRotatingRetarder():
     def __init__(self, r1, r2):
@@ -18,17 +15,24 @@ class DualRotatingRetarder():
 
 
 
-if __name__ == "__main__":
-    port = "/dev/cu.usbserial-FTE4GWPV"
+TITLE = "Dual Rotating Waveplate Polarimeter"
 
-    retarder1 = SMC100(port, 1, units="deg")
-    retarder2 = SMC100(port, 2, units="deg")
 
+def main(sim=False):
+    from auto_gui import run_gui
+    from . import experiment
+
+    retarder1, retarder2 = experiment.retarders(sim)
     dual_retarder = DualRotatingRetarder(retarder1, retarder2)
 
     run_gui(
         automation=dual_retarder,
-        run=dual_retarder.mueller, 
+        run=dual_retarder.mueller,
         hardware=[retarder1, retarder2],
-        title="Dual Rotating Waveplate Polarimeter",
+        title=TITLE,
     )
+
+
+if __name__ == "__main__":
+    import sys
+    main(sim="--sim" in sys.argv)

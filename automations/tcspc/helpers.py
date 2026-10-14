@@ -13,6 +13,8 @@ from datetime import datetime
 import numpy as np
 import h5py
 
+from automations import DATA_DIR
+
 
 def saveTCSPCHDF5(all_data, scanType="tcspcSpectral", name="sample", region="A",
                   resolution_ps=0.0, tacq_ms=0, channel=0):
@@ -30,7 +32,7 @@ def saveTCSPCHDF5(all_data, scanType="tcspcSpectral", name="sample", region="A",
     timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
     name = name or "sample"
 
-    output_dir = os.path.join("data", f"{name}_{timestamp}")
+    output_dir = os.path.join(DATA_DIR, f"{name}_{timestamp}")
     os.makedirs(output_dir, exist_ok=True)
     h5_path = os.path.join(output_dir, f"{name}_Region{region}_{scanType}.h5")
 
@@ -82,7 +84,7 @@ def saveTCSPCRunsHDF5(runs, scanType="tcspcRuns", name="sample", region="A",
     timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
     name = name or "sample"
 
-    output_dir = os.path.join("data", f"{name}_{timestamp}")
+    output_dir = os.path.join(DATA_DIR, f"{name}_{timestamp}")
     os.makedirs(output_dir, exist_ok=True)
     h5_path = os.path.join(output_dir, f"{name}_Region{region}_{scanType}.h5")
 

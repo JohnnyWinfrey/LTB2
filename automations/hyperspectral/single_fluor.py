@@ -1,15 +1,17 @@
 """Hyperspectral single-fluorescence scan -- standalone auto_gui launcher.
 
-Run: python single_fluor.py
+Run: python -m automations.hyperspectral.single_fluor [--sim]
 Scans the reference (optional) then each sample position, sweeping the
 monochromator and recording a 4x-averaged digitizer voltage per wavelength
 (no gain servo), and writes a CSV. Reference + sample positions are hardcoded
-in __main__ (edit as needed). Set sim = 0 for real hardware.
+in __main__ (edit as needed). --sim uses fakes.
 """
 import os
 import csv
 import time
 from datetime import datetime
+
+from automations import DATA_DIR
 
 
 class SingleFluor():
@@ -67,7 +69,7 @@ class SingleFluor():
 
     def _singleFluor(self):
         timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
-        output_dir = os.path.join("data", timestamp)
+        output_dir = os.path.join(DATA_DIR, timestamp)
         os.makedirs(output_dir, exist_ok=True)
         csv_filename = os.path.join(output_dir, 'fluor_scan.csv')
         print(f"Saving data to: {output_dir}")
@@ -103,23 +105,14 @@ class SingleFluor():
         return all_data
 
 
-if __name__ == "__main__":
-    from auto_gui import run_gui, LivePlot
+TITLE = "Single Fluorescence Scan"
 
-    sim = 1
-    if sim:
-        from hardware import (FakeXWing as XWing, FakeCornerstone as Cornerstone,
-                              FakePMTShield as PMTShield, FakeDigitizer as Digitizer)
-        xwing = XWing()
-        cornerstone = Cornerstone()
-        pmt = PMTShield()
-        digi = Digitizer()
-    else:
-        from hardware import XWing, Cornerstone, PMTShield, Digitizer
-        xwing = XWing("COM3")
-        cornerstone = Cornerstone()
-        pmt = PMTShield("COM4")
-        digi = Digitizer()
+
+def main(sim=False):
+    from auto_gui import run_gui, LivePlot
+    from . import experiment
+
+    xwing, cornerstone, pmt, digi = experiment.setup(sim)
 
     # Hardcoded positions -- edit, or jog the XWing window + store buttons instead.
     xwing.reference = {'x': 0.0, 'y': 0.0}
@@ -130,12 +123,17 @@ if __name__ == "__main__":
 
     fluor = SingleFluor(xwing, cornerstone, pmt, digi)
     fluor.plotter = LivePlot(title="SingleFluor (per-position spectrum)",
-                             xlabel="wavelength (nm)", ylabel="voltage (V)",
-                             mode="append")
+                                  xlabel="wavelength (nm)", ylabel="voltage (V)",
+                                  mode="append")
 
     run_gui(
         automation=fluor,
         run=fluor._singleFluor,
         hardware=[xwing, cornerstone, pmt, digi],
-        title="Single Fluorescence Scan",
+        title=TITLE,
     )
+
+
+if __name__ == "__main__":
+    import sys
+    main(sim="--sim" in sys.argv)

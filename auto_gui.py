@@ -41,7 +41,7 @@ THEME = "gruvbox"
 BACKGROUND = ""
 
 
-def _apply_theme(app):
+def apply_theme(app):
     """Apply themes/<THEME>.qss to the whole app (no-op if THEME is None)."""
     if not THEME:
         return
@@ -425,7 +425,7 @@ def run_gui(automation=None, run=None, hardware=(), title="Automation"):
     title      : control-window title.
     """
     app = QApplication.instance() or QApplication(sys.argv)
-    _apply_theme(app)
+    apply_theme(app)
 
     # One parent window holds every panel side by side, so closing it closes
     # everything. (A LivePlot, if attached, stays its own pyqtgraph window.)
