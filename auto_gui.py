@@ -32,13 +32,14 @@ from PySide6.QtWidgets import (
 # file. Set THEME = None for the plain native look. Add your own by dropping a
 # new .qss file in themes/. Bundled:
 #   "dark", "light", "ltb2"        -- neutral / the old SLIM look
-#   "synthwave", "matrix", "dracula", "nord", "gruvbox", "bubblegum", "hotdog"
-THEME = "gruvbox"
+#   "synthwave", "matrix", "dracula", "nord", "gruvbox", "bubblegum", "hotdog",
+#   "redalert"
+THEME = "redalert"
 
 # Optional wallpaper drawn (stretched) behind the panels: a file in themes/
 # (png / jpg / gif). NOTE: GIFs show their FIRST FRAME only -- Qt stylesheets
 # don't animate. Set to None for no background.
-BACKGROUND = ""
+BACKGROUND = "rat.jpg"
 
 
 def apply_theme(app):

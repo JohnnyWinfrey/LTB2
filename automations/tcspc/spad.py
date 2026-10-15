@@ -197,7 +197,7 @@ class TCSPCLive(TH260RateView):
                           channel=self.th260.channel)
 
 
-TITLE = "TCSPC Live"
+TITLE = "TCSPC SPAD"
 
 
 def main(sim=False):

@@ -51,7 +51,7 @@ if __name__ == "__main__":
     win.setWindowTitle("LTB2")
     layout = QVBoxLayout(win)
 
-    sim_box = QCheckBox("Simulate (fake hardware)")
+    sim_box = QCheckBox("Sim Mode!")
     layout.addWidget(sim_box)
 
     for family, automations in discover().items():
