@@ -1,6 +1,6 @@
 """Polarimetry hardware: rotation stages on one daisy-chained SMC100 port,
 plus an SR510 lock-in."""
-from hardware import SMC100, FakeSMC100, SR510, FakeSR510
+from hardware import SMC100, FakeSMC100, SR510, FakeSR510, Cornerstone, FakeCornerstone
 
 PORT = "/dev/cu.usbserial-FTE4GWPV"
 ADDRESSES = [1, 2]     # one entry per controller on the chain
@@ -15,3 +15,6 @@ def retarders(sim=False):
 
 def lockin(sim=False):
     return FakeSR510() if sim else SR510(LOCKIN_PORT)
+
+def cornerstone(sim=False):
+    return FakeCornerstone() if sim else Cornerstone()

@@ -85,7 +85,7 @@ class Cornerstone:
         self.endWavelength = float(value_str)
         print(self.endWavelength)
 
-    def setNumSteps(self, value_str):
+    def setStepSize(self, value_str):
         self.numSteps = int(value_str)
         print(self.numSteps)
 

@@ -391,7 +391,7 @@ class FakeSMC100(SMC100):
 
     def __init__(self, port="FAKE", address=1, units="mm", offset=0.0, wrap=None,
                  limits=None):
-        self._fakeLimits = limits or ((-12.5, 12.5) if units == "mm" else (-720.0, 720.0))
+        self._fakeLimits = limits or ((-360, 360) if units == "mm" else (-1800, 1800))
         super().__init__(port, address, units, offset, wrap)
 
     def _connect(self, port):
