@@ -21,4 +21,5 @@ from .cornerstone import Cornerstone, FakeCornerstone
 from .pmt_shield import PMTShield, FakePMTShield
 from .digitizer import Digitizer, FakeDigitizer
 from .th260 import TH260, FakeTH260
+from .sr510 import SR510, FakeSR510
 from .piezo_stage import StageClient
