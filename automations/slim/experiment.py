@@ -1,20 +1,16 @@
-"""SLIM hardware: two DeathStars (PSG, PSA) plus a spectrometer or power meter.
+"""SLIM hardware: Medusa (PSG + PSA optics and the xwing on one Mega) plus a
+spectrometer or power meter.
 
 Each builder returns the fake when sim is true.
 """
-from hardware import (DeathStar, FakeDeathStar, SpectreCore, FakeSpectreCore,
+from hardware import (Medusa, FakeMedusa, SpectreCore, FakeSpectreCore,
                       PowerMeter, FakePowerMeter)
 
-PSG_PORT = "COM10"
-PSA_PORT = "COM9"
+MEDUSA_PORT = "/dev/cu.usbmodem1301"
 
 
-def psg(sim=False):
-    return FakeDeathStar(id="PSG") if sim else DeathStar(PSG_PORT, False, "PSG")
-
-
-def psa(sim=False):
-    return FakeDeathStar(ZAxis=True, id="PSA") if sim else DeathStar(PSA_PORT, True, "PSA")
+def medusa(sim=False):
+    return FakeMedusa() if sim else Medusa(MEDUSA_PORT)
 
 
 def spectrometer(sim=False):

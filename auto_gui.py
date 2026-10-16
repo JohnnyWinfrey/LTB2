@@ -16,6 +16,7 @@ Minimal usage::
 import inspect
 import sys
 import traceback
+import typing
 from pathlib import Path
 
 from PySide6.QtCore import QThread, Signal, Qt, QObject
@@ -34,7 +35,7 @@ from PySide6.QtWidgets import (
 #   "dark", "light", "ltb2"        -- neutral / the old SLIM look
 #   "synthwave", "matrix", "dracula", "nord", "gruvbox", "bubblegum", "hotdog",
 #   "redalert"
-THEME = "redalert"
+THEME = "nord"
 
 # Optional wallpaper drawn (stretched) behind the panels: a file in themes/
 # (png / jpg / gif). NOTE: GIFs show their FIRST FRAME only -- Qt stylesheets
@@ -125,6 +126,9 @@ def build_hardware_window(device):
         if not params:
             outer.addWidget(_action_or_readout_row(name, method))
             added = True
+        elif len(params) == 1 and _choices(params[0]):
+            outer.addWidget(_choice_row(name, method, _choices(params[0])))
+            added = True
         else:
             outer.addWidget(_setter_group(name, method, params))
             added = True
@@ -175,6 +179,35 @@ def _action_or_readout_row(name, method):
 
     btn.clicked.connect(do_action)
     return btn
+
+
+def _choices(param):
+    """The options of a Literal[...] annotation, else None."""
+    if typing.get_origin(param.annotation) is typing.Literal:
+        return typing.get_args(param.annotation)
+    return None
+
+
+def _choice_row(name, method, choices):
+    """One-arg method typed Literal[...]: label + one button per choice,
+    e.g. jog(direction: Literal["-", "+"]) -> "jog  [-] [+]"."""
+    row = QWidget()
+    lay = QHBoxLayout(row)
+    lay.setContentsMargins(0, 0, 0, 0)
+    lay.addWidget(QLabel(name), 1)
+
+    for choice in choices:
+        btn = QPushButton(str(choice))
+
+        def do_call(_checked=False, choice=choice):
+            try:
+                method(choice)
+            except Exception as exc:
+                print(f"[auto_gui] {name}({choice!r}) raised: {exc}")
+
+        btn.clicked.connect(do_call)
+        lay.addWidget(btn)
+    return row
 
 
 def _setter_group(name, method, params):

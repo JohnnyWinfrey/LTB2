@@ -1,7 +1,7 @@
 """Planar Mueller scan -- the SLIM_DRM dual-rotating-waveplate sequence run at
 every point of a translation scan.
 
-The sample stage is the Z axis of the PSA DeathStar (the same "xwing" travel
+The sample stage is Medusa's xwing axis (the same travel
 SLIM_planarDiffraction drives): 41 points, 0-20 mm in 0.5 mm steps. At each
 point the PSG waveplate steps through a full rotation while the PSA waveplate
 spins 5x as fast (see SLIM_DRM.py); the whole angle sweep is written to its own
@@ -17,13 +17,12 @@ from .helpers import saveMuellerHDF5
 
 class SLIMPlanarMueller():
 
-    def __init__(self, PSG, PSA, spectrometer):
+    def __init__(self, medusa, spectrometer):
         super().__init__()
-        self.PSG_DeathStar = PSG
-        self.PSA_DeathStar = PSA
+        self.medusa = medusa
         self.spectro       = spectrometer
         self.plotter       = None   # optional auto_gui.LivePlot (replace mode)
-        self.DeathStarWait = 1
+        self.settleWait    = 1      # s after each move (setPosition already waits for motion)
 
         # Stage line scan: 41 points, 0-20 mm in 0.5 mm steps (same travel as
         # SLIM_planarDiffraction).
@@ -50,9 +49,9 @@ class SLIMPlanarMueller():
             psg_angle = psg_waveplate_angles[i]
             psa_angle = psg_angle * 5   # PSA waveplate spins 5x the PSG's
 
-            self.PSG_DeathStar.setPosition("0", str(psg_angle))
-            self.PSA_DeathStar.setPosition("0", str(psa_angle))
-            time.sleep(self.DeathStarWait)
+            self.medusa.setPosition(psgPol=0, psgWave=psg_angle,
+                                    psaPol=0, psaWave=psa_angle)
+            time.sleep(self.settleWait)
 
             wavelengths, intensities = self.spectro.takeSpectrum()
             if self.plotter is not None:
@@ -65,7 +64,7 @@ class SLIMPlanarMueller():
         return all_data
 
     def _planarMueller(self):
-        """Walk the PSA Z stage and run a DRM sweep at every point."""
+        """Walk the xwing and run a DRM sweep at every point."""
         points = []
         self.avgStepTime = []
         try:
@@ -78,8 +77,8 @@ class SLIMPlanarMueller():
                 # in the same move, then let the stage settle.
                 T2 = float(p * self.stepSize)
                 print(f"Point {p + 1}/{self.numPoints}: T2={T2}")
-                self.PSG_DeathStar.setPosition("0", "0")
-                self.PSA_DeathStar.setPosition("0", "0", str(T2))
+                self.medusa.setPosition(psgPol=0, psgWave=0,
+                                        psaPol=0, psaWave=0, xwing=T2)
                 time.sleep(self.stageWait)
 
                 all_data = self._dualRotatingWaveplate()
@@ -99,9 +98,8 @@ class SLIMPlanarMueller():
                 self.progress(p, self.numPoints, np.average(self.avgStepTime))
 
         finally:
-            self.PSA_DeathStar.resetHome()
-            self.PSA_DeathStar.zHome()
-            self.PSG_DeathStar.resetHome()
+            self.medusa.resetHome()
+            self.medusa.xwingHome()
 
         # Save everything collected (skip if stopped before the first point).
         if points:
@@ -119,15 +117,15 @@ def main(sim=False):
     from auto_gui import run_gui, LivePlot
     from . import experiment
 
-    psg, psa, spectro = experiment.psg(sim), experiment.psa(sim), experiment.spectrometer(sim)
-    slim = SLIMPlanarMueller(psg, psa, spectro)
+    medusa, spectro = experiment.medusa(sim), experiment.spectrometer(sim)
+    slim = SLIMPlanarMueller(medusa, spectro)
     slim.plotter = LivePlot(title="SLIM live spectrum", xlabel="wavelength (nm)",
                             ylabel="counts", mode="replace")
 
     run_gui(
         automation=slim,
         run=slim._planarMueller,
-        hardware=[psg, psa, spectro],
+        hardware=[medusa, spectro],
         title=TITLE,
     )
 

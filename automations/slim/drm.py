@@ -7,13 +7,12 @@ from .helpers import saveHDF5
 
 class SLIMDRMCalibration():
 
-    def __init__(self, PSG, PSA, spectrometer):
+    def __init__(self, medusa, spectrometer):
         super().__init__()
-        self.PSG_DeathStar = PSG
-        self.PSA_DeathStar = PSA
+        self.medusa = medusa
         self.spectro       = spectrometer
         self.plotter       = None   # optional auto_gui.LivePlot (replace mode)
-        self.DeathStarWait = 1
+        self.settleWait    = 1      # s after each move (setPosition already waits for motion)
 
         print("SLIM AUTOMATION READY")
 
@@ -36,9 +35,9 @@ class SLIMDRMCalibration():
                 psg_angle = psg_waveplate_angles[i]
                 psa_angle = psg_angle * 5   # PSA waveplate spins 5x the PSG's
 
-                self.PSG_DeathStar.setPosition("0", str(psg_angle))
-                self.PSA_DeathStar.setPosition("0", str(psa_angle))
-                time.sleep(self.DeathStarWait)
+                self.medusa.setPosition(psgPol=0, psgWave=psg_angle,
+                                        psaPol=0, psaWave=psa_angle)
+                time.sleep(self.settleWait)
 
                 wavelengths, intensities = self.spectro.takeSpectrum()
                 if self.plotter is not None:
@@ -54,8 +53,7 @@ class SLIMDRMCalibration():
                 self.progress(i, numSteps, np.average(self.avgStepTime))
 
         finally:
-            self.PSG_DeathStar.home()
-            self.PSA_DeathStar.home()
+            self.medusa.home()
 
         # Save everything collected (skip if stopped before the first scan).
         if all_data:
@@ -74,15 +72,15 @@ def main(sim=False):
     from auto_gui import run_gui, LivePlot
     from . import experiment
 
-    psg, psa, spectro = experiment.psg(sim), experiment.psa(sim), experiment.spectrometer(sim)
-    slim = SLIMDRMCalibration(psg, psa, spectro)
+    medusa, spectro = experiment.medusa(sim), experiment.spectrometer(sim)
+    slim = SLIMDRMCalibration(medusa, spectro)
     slim.plotter = LivePlot(title="SLIM live spectrum", xlabel="wavelength (nm)",
                             ylabel="counts", mode="replace")
 
     run_gui(
         automation=slim,
         run=slim._dualRotatingWaveplate,
-        hardware=[psg, psa, spectro],
+        hardware=[medusa, spectro],
         title=TITLE,
     )
 

@@ -8,9 +8,9 @@ from .helpers import progressBarCoolStyle
 
 class SLIMPowerCurve():
 
-    def __init__(self, PSG, powerMeter):
+    def __init__(self, medusa, powerMeter):
         super().__init__()
-        self.PSG_DeathStar = PSG
+        self.medusa        = medusa
         self.powerMeter    = powerMeter
         # Seconds to wait after each move before reading (0 in sim mode).
 
@@ -31,7 +31,7 @@ class SLIMPowerCurve():
                 if getattr(self, "_stop", False):
                     break
                 print(i)
-                self.PSG_DeathStar.setPosition(str(psg_angles[i]), str(psg_angles[i]))
+                self.medusa.setPosition(psgPol=psg_angles[i], psgWave=psg_angles[i])
                 time.sleep(1)
 
                 intensities.append(self.powerMeter.measure())  # single power reading
@@ -43,7 +43,7 @@ class SLIMPowerCurve():
                 self.plotter.append(psg_angles[i], intensities[-1])
 
         finally:
-            self.PSG_DeathStar.home()
+            self.medusa.setPosition(psgPol=0, psgWave=0)   # PSG only; leave the PSA alone
             # Always release the meter, even if a scan raised.
             self.powerMeter.close()
 
@@ -65,15 +65,15 @@ def main(sim=False):
     from auto_gui import run_gui, LivePlot
     from . import experiment
 
-    psg, meter = experiment.psg(sim), experiment.power_meter(sim)
-    slim = SLIMPowerCurve(psg, meter)
+    medusa, meter = experiment.medusa(sim), experiment.power_meter(sim)
+    slim = SLIMPowerCurve(medusa, meter)
     slim.plotter = LivePlot(title="SLIM sweep", xlabel="PSG angle (deg)",
                             ylabel="intensity", mode="append")
 
     run_gui(
         automation=slim,
         run=slim._powerCurve,
-        hardware=[psg, meter],
+        hardware=[medusa, meter],
         title=TITLE,
     )
 

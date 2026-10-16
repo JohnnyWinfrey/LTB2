@@ -4,9 +4,8 @@ from .helpers import saveHDF5
 
 class SLIMEdgeCP():
 
-    def __init__(self, PSG, PSA, spectrometer):
-        self.PSG_DeathStar = PSG
-        self.PSA_DeathStar = PSA
+    def __init__(self, medusa, spectrometer):
+        self.medusa = medusa
         self.spectro = spectrometer
         self.plotter = None
         print("SLIM AUTOMATION READY")
@@ -27,8 +26,9 @@ class SLIMEdgeCP():
                         break
 
                     T2 = float(x / 2)
-                    self.PSG_DeathStar.setPosition(str(angleStep), "0", "0")
-                    self.PSA_DeathStar.setPosition(str(analyzeStep), str(analyzeStep), str(T2))
+                    self.medusa.setPosition(psgPol=angleStep, psgWave=0,
+                                            psaPol=analyzeStep, psaWave=analyzeStep,
+                                            xwing=T2)
                     #time.sleep(1)
 
                     wavelengths, intensities = self.spectro.takeSpectrum()
@@ -41,9 +41,8 @@ class SLIMEdgeCP():
             t1=time.time()
             self.avgStepTime.append(t1-t0)
             self.progress(x, numSteps, np.average(self.avgStepTime))
-        self.PSA_DeathStar.resetHome()
-        self.PSA_DeathStar.zHome()
-        self.PSG_DeathStar.resetHome()
+        self.medusa.resetHome()
+        self.medusa.xwingHome()
 
         if all_data:
             s = self.spectro
@@ -61,15 +60,15 @@ def main(sim=False):
     from auto_gui import run_gui, LivePlot
     from . import experiment
 
-    psg, psa, spectro = experiment.psg(sim), experiment.psa(sim), experiment.spectrometer(sim)
-    slim = SLIMEdgeCP(psg, psa, spectro)
+    medusa, spectro = experiment.medusa(sim), experiment.spectrometer(sim)
+    slim = SLIMEdgeCP(medusa, spectro)
     slim.plotter = LivePlot(title="SLIM live spectrum", xlabel="wavelength (nm)",
                             ylabel="counts", mode="replace")
 
     run_gui(
         automation=slim,
         run=slim._edgeCP,
-        hardware=[psg, psa, spectro],
+        hardware=[medusa, spectro],
         title=TITLE,
     )
 

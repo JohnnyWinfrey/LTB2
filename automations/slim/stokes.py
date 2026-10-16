@@ -4,9 +4,8 @@ from .helpers import saveHDF5
 
 class SLIMStokes():
 
-    def __init__(self, PSG, PSA, spectrometer):
-        self.PSG_DeathStar = PSG
-        self.PSA_DeathStar = PSA
+    def __init__(self, medusa, spectrometer):
+        self.medusa = medusa
         self.spectro = spectrometer
         self.plotter = None      # optional auto_gui.LivePlot (replace mode)
         print("SLIM AUTOMATION READY")
@@ -28,8 +27,8 @@ class SLIMStokes():
                 if getattr(self, "_stop", False):
                     break
 
-                self.PSG_DeathStar.setPosition(str(angleStep), str(angleStep))
-                self.PSA_DeathStar.setPosition(str(stokes_IP[s]), str(stokes_CW[s]))
+                self.medusa.setPosition(psgPol=angleStep, psgWave=angleStep,
+                                        psaPol=stokes_IP[s], psaWave=stokes_CW[s])
                 time.sleep(1)
 
                 wavelengths, intensities = self.spectro.takeSpectrum()
@@ -44,8 +43,7 @@ class SLIMStokes():
             self.avgStepTime.append(t1-t0)
             self.progress(angleStep, 10, np.average(self.avgStepTime))
 
-        self.PSG_DeathStar.home()
-        self.PSA_DeathStar.home()
+        self.medusa.home()
 
         # Save everything collected (skip if stopped before the first scan).
         if all_data:
@@ -64,15 +62,15 @@ def main(sim=False):
     from auto_gui import run_gui, LivePlot
     from . import experiment
 
-    psg, psa, spectro = experiment.psg(sim), experiment.psa(sim), experiment.spectrometer(sim)
-    slim = SLIMStokes(psg, psa, spectro)
+    medusa, spectro = experiment.medusa(sim), experiment.spectrometer(sim)
+    slim = SLIMStokes(medusa, spectro)
     slim.plotter = LivePlot(title="SLIM live spectrum", xlabel="wavelength (nm)",
                             ylabel="counts", mode="replace")
 
     run_gui(
         automation=slim,
         run=slim._stokes,
-        hardware=[psg, psa, spectro],
+        hardware=[medusa, spectro],
         title=TITLE,
     )
 

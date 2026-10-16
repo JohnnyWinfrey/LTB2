@@ -14,6 +14,7 @@ To add a device: drop a module in here and re-export its classes below.
 """
 from .power_meter import PowerMeter, FakePowerMeter
 from .death_star import DeathStar, FakeDeathStar
+from .medusa import Medusa, FakeMedusa
 from .xwing import XWing, FakeXWing
 from .smc100 import SMC100, FakeSMC100
 from .spectre_core import SpectreCore, FakeSpectreCore
