@@ -75,22 +75,20 @@ class TCSPCSpectral(TH260RateView):
               f"{cs.numSteps} steps, {th.tacq} ms per point, "
               f"{bins} bins of {th.resolutionPs:.0f} ps")
 
-        cs.mono.open_shutter()
-        cs.shutterState = "Open"
+        cs.open_shutter()
         all_data = []
         self.avgStepTime = []
         self._acquiring = True    # locks the bin width for the whole scan
 
         try:
-            for j in range(cs.numSteps):
+            for j in range(cs.numSteps+1):
                 if getattr(self, "_stop", False):
                     break
                 t0 = time.time()
 
                 wavelength = cs.startWavelength + j * step_size
-                cs.mono.goto(wavelength)
+                cs.goto(wavelength)
                 time.sleep(self.settleTime)
-                cs.currentWavelength = wavelength
 
                 result = self._measure(th.tacq, bins)
                 counts = result["counts"]
@@ -110,8 +108,7 @@ class TCSPCSpectral(TH260RateView):
                       f"rate={th.lastCountRate:.2e}/s")
         finally:
             self._acquiring = False
-            cs.mono.close_shutter()
-            cs.shutterState = "Closed"
+            cs.close_shutter()
 
         # Guard: a Stop before the first point would otherwise write a broken file.
         if all_data:

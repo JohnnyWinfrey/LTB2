@@ -1,202 +1,350 @@
 # Cornerstone monochromator: direct USB driver (handoff)
 
-**Status (2026-10-21):** code written and tested against a simulated device
-only. **It has not run on a real CS130 or CS260 yet.** The old helper exe is
-still in place and is used automatically on any PC that hasn't been switched
-over, so nothing is broken in the meantime.
+## Where things stand (2026-10-22)
 
-## Why
+LTB2 now drives Oriel Cornerstone monochromators directly over USB
+(`pyusb` + Microsoft's WinUSB driver) instead of through Newport's software.
 
-The Cornerstone (Oriel CS130 / CS260) used to be driven through
-`helpers/cornerstone_helper.exe`. That's a bundled 32-bit Python that loads
-Newport's `Cornerstone.dll`, which uses Cypress's `CyUSB.dll` and the
-`CyUSB.sys` kernel driver. LTB2 talks to the exe over stdin/stdout. It's slow
-(each query took about 2 s), hard to change, and needs Newport software
-installed on every PC.
+- **CS130: done.** SN1007, firmware V04.30, on the CS130 lab PC. Connecting,
+  wavelength moves, shutter and grating changes were checked against the
+  hardware. That PC is on WinUSB now.
+- **CS260: not tested yet.** That's the next step, below. The protocol is
+  expected to be the same (same USB ID, same DLL), but the CS260 has 3
+  gratings, possibly a filter wheel and motorized slits, and its firmware
+  may differ.
+- **The old helper exe is gone** (removed from the repo along with
+  Newport's DLLs and all code that used it). **Every PC must have the
+  WinUSB driver swap before LTB2 can use its monochromator.** On a PC still
+  on Newport's driver, `Cornerstone()` stops with "can't open the
+  monochromator … still on Newport's CYUSB driver".
+- **One code path for every unit.** The lab has one CS130 and two CS260s
+  at three tables. On connect, the driver reads the model, serial and
+  firmware and detects the installed gratings, filter wheel and motorized
+  slits. Asking for something a unit lacks (grating 3 on the CS130) prints
+  a warning in the GUI and sends nothing. Detection is verified on the
+  CS130 only.
 
-`Cornerstone.dll` turned out to be a thin 12 KB .NET wrapper around plain text
-commands sent over USB. The new code sends those same bytes itself, using
-`pyusb` and Microsoft's generic WinUSB driver: no Newport software, no exe,
-normal 64-bit Python.
+## Next session: test on the CS260
 
-## How it works
+### 0. Before leaving the CS130 PC
 
-Windows lets one kernel driver "own" each USB device. On a PC switched over
-with Zadig, that's WinUSB instead of Cypress's driver. WinUSB is a dumb pipe,
-and `pyusb` uses it to read and write the device's two bulk endpoints.
+The driver rewrite must be committed and pushed, or the CS260 PC won't have
+it. Check with `git log`: the commits after `19edcd1 cornerstone refactor
+start` should touch `hardware/cornerstone.py`, `helpers/cornerstone_probe.py`
+and this file, and delete `helpers/cornerstone_helper.exe`.
+
+### 1. Set up the CS260 PC
+
+From the repo root, after pulling:
+
+```
+pip install -r requirements.txt
+```
+
+(`pyusb` and `libusb-package` are the new ones.)
+
+Check whether anything else on this PC uses the monochromator through
+Newport's software (LabVIEW, Newport's own app, another script). After the
+driver swap, **none of them will see it**. That's reversible (see
+"Undoing the driver swap"), but decide first.
+
+### 2. Swap the driver with Zadig (once per PC, needs admin)
+
+1. Plug in and power on the monochromator.
+2. Run Zadig (https://zadig.akeo.ie). Options → **List All Devices**.
+3. In the dropdown, pick the monochromator. Before the swap it is listed as
+   "Newport/Oriel Cornerstone Monochromator" (Device Manager's name for it).
+4. Check the fields:
+   - **USB ID** fills in by itself and must read `1180` `0012`. The third
+     box is usually blank. If it shows anything else, you picked the wrong
+     device.
+   - **Driver**: left of the arrow is the current driver (`CYUSB`). Right
+     of the arrow, choose **WinUSB**.
+   - **WCID**: just an indicator; a red ✗ is normal. Ignore it.
+5. Click **Replace Driver**.
+
+Afterwards Device Manager lists it under "Universal Serial Bus devices"
+with service `WinUSB` (on the CS130 the name changed to "VSE-SPECTRA").
+
+### 3. Run the probe in stages
+
+The probe talks to the unit directly and logs every reply to
+`cornerstone_probe_<time>.txt` in the current folder. Run it from a scratch
+folder so logs don't land in the repo.
+
+```
+python <repo>/helpers/cornerstone_probe.py                 # read-only
+python <repo>/helpers/cornerstone_probe.py --move          # +10 nm and back, shutter open/close
+python <repo>/helpers/cornerstone_probe.py --grating 1     # switch grating and back, restore wavelength
+```
+
+- Start read-only. If it fails at "Claim", the driver swap didn't take.
+- `--grating N` must be a grating **other than the current one** (the
+  read-only run shows it under `GRAT?`), or nothing moves. The probe
+  switches to N, back to the original, and returns to the original
+  wavelength.
+- Everything it changes is restored. It never writes calibration values.
+
+### 4. Compare the log with the CS130
+
+Each reply is the text before the first `\r\n` in the packets logged after
+the command. What the CS130 answered, for reference:
+
+| Query | CS130 reply | What to look for on the CS260 |
+|---|---|---|
+| `INFO?` | `Oriel Instruments,Model Cornerstone 130,SN1007,V04.30` | **Must contain "Cornerstone"**: the driver checks this on connect |
+| `WAVE?` | `655.976` | a number in nm |
+| `UNITS?` | `nm` | `nm` (LTB2 assumes nm) |
+| `SHUTTER?` | `C` / `O` | same |
+| `GRAT?` | `2,600,1000` (number, lines/mm, label) | **same format**; the driver uses the first number |
+| `GRAT<n>LINES?` / `LABEL?` | `600` / `400`, `600` / `1000` | grating 3 should answer now |
+| `GRAT3…` | no reply (CS130 has 2 gratings) | a reply |
+| `FILTER?` | `0` (no wheel) | `0`, or a position if there's a wheel |
+| `SLIT1MICRONS?`, `BANDPASS?` | `0`, `0.000` (no motorized slits) | real values if it has them |
+| `STB?` | `20` | anything |
+| `STEP?` | `149135` (motor position) | a number |
+
+How the firmware should behave (all true on the CS130, so check these):
+
+- **Replies arrive 60–150 ms after the command.** The packets before that
+  start with eight `\x00` bytes ("busy").
+- **The query right after a move is answered only once the move is done.**
+  In the `--move` section, the `WAVE?` after `GOWAVE` should come back with
+  the new wavelength, not the old one. Same for `GRAT?` after `GRAT`
+  (~11 s on the CS130).
+- **The wavelength after a grating change.** On the CS130 it jumped
+  (3163.99 nm on grating 1, -0.029 nm back on grating 2). Note what the
+  CS260 does. If it keeps the wavelength, `Cornerstone.set_grating`'s
+  move-back is harmless but could be skipped.
+
+### 5. Test the real driver
+
+From the repo root, with the unit idle:
+
+```python
+from hardware import Cornerstone
+cs = Cornerstone()
+# prints e.g. "Cornerstone: Cornerstone 130 SN1007 V04.30:
+#   gratings 1 (600 l/mm), 2 (600 l/mm); no filter wheel; no motorized slits"
+print(cs.client.info, cs.client.units(), cs.position(), cs.getGratingInfo())
+for n in (1, 2, 3):
+    print(cs.client.grating_info(n))
+cs.open_shutter(); print(cs.shutter_open()); cs.close_shutter(); print(cs.shutter_open())
+start = cs.position()
+cs.goto(start + 10); print(cs.position())
+cs.goto(start); print(cs.position())
+cs.set_grating(1); print(cs.getGratingInfo(), cs.position())   # pick one that isn't current;
+cs.set_grating(2); print(cs.getGratingInfo(), cs.position())   # end on the original grating
+cs.client.close()
+```
+
+Each `set_grating` should come back near the starting wavelength (within
+0.05 nm).
+
+**Check the connect line against the real unit.** It should list 3
+gratings on a CS260. The filter wheel and slits are detected by
+`FILTER?` > 0 and `SLIT<n>MICRONS?` > 0. That's right for a unit without
+them (the CS130 answers `0`), but untested on one that has them. If a
+fitted wheel or slit shows up as missing (or the reverse), fix
+`CornerstoneClient._detect`. Run this on both CS260s, since their gratings and
+accessories may differ. If the CS260 has a filter wheel or slits, also try
+`cs.filter()`, `cs.set_filter(n)` and `cs.slit_width(1)`. Only change slits
+if nothing on the bench minds.
+
+Then run a real automation (e.g. `python -m automations.tcspc.spectral`)
+and check the console prints the `Cornerstone: Cornerstone 260 …` line.
+
+### 6. If something goes wrong
+
+- **"replies are out of step with queries; power-cycle the monochromator"**
+  or answers that belong to a different query: switch the unit off for
+  ~5 s and back on. USB resets don't clear it. It's caused by sending
+  commands while one is still running (e.g. two programs at once, or a
+  script polling during a move).
+- **`Cornerstone warning: … has no grating 3 …; nothing sent`**: expected
+  on a unit without that grating or accessory, from the GUI or an
+  automation. The automation carries on, on the grating it was already
+  using. (Calling `cs.client` directly raises `Unsupported` instead.)
+- **`no reply to 'X?' in 2 s`**: the unit doesn't support that command
+  (on the CS130 that's `GRAT3…` and `FILTER1LABEL?`). This does not put it
+  out of step.
+- **"can't open the monochromator: it's still on Newport's CYUSB
+  driver"**: do (or redo) the Zadig step.
+- **"can't open the monochromator (Access denied …); another program …
+  has it open"**: close the other LTB2 window or script using it.
+- **A move times out**: `goto` waits 120 s, `set_grating` 120 s,
+  `set_filter` 30 s. If the CS260 is slower, raise those defaults in
+  `CornerstoneClient`.
+
+### Still open after the CS260
+
+1. **`BANDPASS` and `STEP` set syntax.** Newport's DLL sends them with no
+   space (`BANDPASS5`, `STEP10`); the driver sends a space. Untested, since
+   the CS130 has no motorized slits and `STEP` moves the motor. If the
+   CS260 has slits, try `cs.client.set_bandpass(...)`, then
+   `cs.client.bandpass()` and see
+   whether it took.
+2. **Roll out** to the remaining PC (the second CS260):
+   `pip install -r requirements.txt` + the Zadig swap. Required now that
+   there's no fallback. `wdi-simple.exe` (from libwdi, the project behind
+   Zadig) can do the swap from a `.bat` if clicking through Zadig is a
+   problem.
+3. **Optional: pick a unit by serial number** (`cs.client.serial`, e.g. `1007`), if a
+   PC ever has two monochromators. There's no COM port over USB (VID, PID
+   and endpoints are fixed for every CS130/CS260). An RS-232 transport via
+   pyserial would be a separate addition if the serial port is ever used.
+
+---
+
+## Reference
+
+### Why the change
+
+The old route (removed; last present in commit `19edcd1`) was
+`helpers/cornerstone_helper.exe`, a bundled 32-bit
+Python that loads Newport's `Cornerstone.dll`, which uses Cypress's
+`CyUSB.dll` and `CyUSB.sys`. It was slow (~2 s per query), hard to change,
+and needed Newport software on every PC. `Cornerstone.dll` turned out to be
+a thin .NET wrapper around plain text commands over USB, so LTB2 now sends
+those bytes itself.
 
 ```
 before:  LTB2 -> helper exe (32-bit Python) -> Cornerstone.dll -> CyUSB.dll -> CyUSB.sys -> USB
 after:   LTB2 -> pyusb / libusb -> WinUSB.sys -> USB
 ```
 
-The bytes on the cable are the same in both cases. The monochromator can't
-tell the difference.
+Speed on the CS130: queries ~0.1 s; 10 nm move ~0.35 s; 0 → 655 nm
+~1.3 s; grating change ~11 s (~19 s through `Cornerstone.set_grating`, which also moves
+back to the wavelength).
 
-## Protocol (from disassembling Cornerstone.dll v1.0.1.1)
+### What's in the repo
+
+| File | What |
+|---|---|
+| `hardware/cornerstone.py` | `Cornerstone` (simple; automations + GUI), `CornerstoneClient` (all the hardware code), `FakeCornerstone` (`--sim`), `Unsupported` |
+| `helpers/cornerstone_probe.py` | standalone diagnostic; logs raw USB traffic |
+| `requirements.txt` | `pyusb`, `libusb-package` |
+| `auto_gui.py` | `position`, `grating`, `filter`, `shutter_open` added to the readout names, so the GUI shows their values |
+
+Two layers, like `TH260` / `TH260DLLClient`:
+
+- **`Cornerstone`** is the simple class automations use, e.g.
+  `cs = Cornerstone()`, `cs.goto(550)`. It has `goto`, `position`,
+  `open_shutter`, `close_shutter`, `shutter_open`, `set_grating`,
+  `grating`, `set_filter`, `filter`, `set_slit_width` and `slit_width`. Each
+  is a line or two calling the client, with a plain-English docstring.
+  It's also the GUI window; its public methods are the GUI controls, plus
+  the scan range (`startWavelength`, `endWavelength`, `numSteps`) and
+  `getGratingInfo`. `set_grating` also moves back to the previous
+  wavelength. `set_grating` / `set_filter` / `set_slit_width` print a
+  warning and do nothing for anything the unit lacks.
+- **`CornerstoneClient`** (`cs.client`) has all the hardware code and every
+  command below (`step`, `units`, `grating_info`, `filter_label`,
+  `set_bandpass`, calibration, ...); its docstring lists them all. `goto`,
+  `set_grating` and `set_filter` return once the move is done and raise
+  `RuntimeError` if the unit ends up elsewhere. A lock keeps the GUI and a
+  running automation from interleaving commands. Also exported from
+  `hardware` along with `Unsupported`.
+- **Capability detection** (`CornerstoneClient._detect`, run by `open()`, ~2 s):
+  `.model`, `.serial`, `.firmware` from `INFO?`; `.gratings`
+  (`{number: lines/mm}`, from which `GRAT<n>LINES?` answer); `.has_filter_wheel`;
+  `.slits`. `describe()` gives the one-line summary. Grating, filter and slit
+  methods raise `Unsupported` for anything not detected, before sending.
+  A missing feature never replies, so detection uses a 0.5 s timeout.
+- **`Cornerstone()`** connects and prints the unit's one-line description.
+  The GUI's `set_grating` buttons 1/2/3 come from the class's type hints,
+  so button 3 is always shown (and warns on a CS130); hiding it per unit
+  would need a change in `auto_gui.py`.
+- **`FakeCornerstone`** (`--sim`) runs the real `CornerstoneClient` code on a
+  simulated CS260 with everything fitted (3 gratings, filter wheel,
+  slits). Only the USB layer is replaced, so every method behaves as on
+  hardware, the `Unsupported` checks included.
+
+### Protocol
 
 | Item | Value |
 |---|---|
-| USB ID | VID `0x1180`, PID `0x0012` (same for CS130 and CS260) |
-| Endpoints | bulk OUT `0x01`, bulk IN `0x81`, interface 0 |
-| Packet size | 64 bytes |
-| Command format | ASCII text + `\r\n`, e.g. `GOWAVE 500.000\r\n` |
-| Replies | one line, `<value>\r\n`; Newport parses the first line |
-| Set commands | no reply (`GOWAVE`, `SHUTTER O/C`, `GRAT n`, `FILTER n`, ...) |
-
-Full command set used by the DLL:
+| USB ID | VID `0x1180`, PID `0x0012` (CS130 and CS260) |
+| Endpoints | bulk OUT `0x01`, bulk IN `0x81`, interface 0, 64-byte packets (the device also has unused `0x82` IN / `0x08` OUT) |
+| Commands | ASCII + `\r\n`, e.g. `GOWAVE 500.000\r\n` |
+| Queries | one-line reply |
+| Set commands, bad commands | no reply |
 
 | Purpose | Query | Set |
 |---|---|---|
+| Identity | `INFO?` | |
 | Wavelength | `WAVE?` | `GOWAVE <nm>` |
-| Motor steps | | `STEP <n>` |
+| Motor steps | `STEP?` | `STEP <n>` |
 | Units | `UNITS?` | `UNITS NM\|UM\|WN` |
 | Shutter | `SHUTTER?` (`O`/`C`) | `SHUTTER O`, `SHUTTER C` |
 | Grating | `GRAT?` | `GRAT <n>` |
 | Grating info | `GRAT<n>LINES?`, `GRAT<n>LABEL?` | `GRAT<n>LINES <l>`, `GRAT<n>LABEL <text>` |
-| Grating calibration | `GRAT<n>ZERO?`, `GRAT<n>OFFSET?`, `GRAT<n>FACTOR?` | same without `?`, plus a value |
+| Grating calibration | `GRAT<n>ZERO?`, `OFFSET?`, `FACTOR?` | same without `?`, plus a value |
 | Filter wheel | `FILTER?`, `FILTER<n>LABEL?` | `FILTER <n>`, `FILTER<n>LABEL <text>` |
 | Slits (µm) | `SLIT<n>MICRONS?` | `SLIT<n>MICRONS <um>` |
 | Bandpass | `BANDPASS?` | `BANDPASS <nm>` |
+| Status | `STB?` | |
 | Handshake | | `HANDSHAKE 0\|1` |
 
-Slit numbers: 1 = input port A, 2 = off-axis output B, 3 = on-axis output C.
+Slits: 1 = input port A, 2 = off-axis output B, 3 = on-axis output C.
 
-**How Newport waits for a move.** For `GOWAVE` and `GRAT`, the DLL sends
-`HANDSHAKE 1`, then the move, polls the IN pipe until a reply starts with `"0"`
-(up to 120 s), then sends `HANDSHAKE 0`. The new code doesn't do that. It
-polls `WAVE?` / `GRAT?` / `FILTER?` until the unit reports the target, and
-counts unanswered queries as "still moving".
+### How the firmware answers (measured on the CS130)
 
-## What's in the repo
-
-| File | What |
-|---|---|
-| `hardware/cornerstone.py` | `CornerstoneUSB` (new driver), `CornerstoneClient` (old exe link), `Cornerstone` (GUI/automation class), fakes |
-| `helpers/cornerstone_probe.py` | standalone diagnostic; logs raw USB traffic to a text file |
-| `requirements.txt` | adds `pyusb` and `libusb-package` |
-| `docs/cornerstone_usb_handoff.md` | this file |
-
-`hardware/cornerstone.py` in more detail:
-
-- **`CornerstoneUSB`** has every command in the table above as a method
-  (`goto`, `position`, `set_grating`, `grating_info`, `set_filter`,
-  `set_slit_width`, `units`, ...). `goto`, `set_grating` and `set_filter`
-  block until the move finishes and raise `RuntimeError` on timeout. A
-  re-entrant lock keeps the GUI and a running automation from interleaving
-  commands. Stale input is drained before each command.
-- **`Cornerstone(transport="auto")`** tries USB first and falls back to the
-  helper exe, printing which one it used. `transport="usb"` or `"exe"` forces
-  one.
-- **New GUI controls** on `Cornerstone`: `setGrating` (buttons 1/2/3),
-  `getGrating`, `setFilter`, `getFilter`, `setSlitWidth`. They only work over
-  USB; on the old exe they raise a clear error.
-- **Unchanged interface.** Automations that call `cs.mono.goto()`,
-  `cs.mono.open_shutter()` and so on work the same on either transport.
-  `FakeCornerstone` supports the new controls, so `--sim` runs still work.
-
-## Not yet verified on hardware
-
-The probe log will settle these:
-
-1. **`BANDPASS` and `STEP` syntax.** The DLL sends them with no space
-   (`BANDPASS5`, `STEP10`). The new code sends a space, like every other
-   command. Check which one the firmware accepts.
-2. **`GRAT?` reply format.** It might be `2` or `2,1200,750`. The code takes
-   the leading number, so either works, but confirm.
-3. **Move completion.** If `WAVE?` reports the target before the grating has
-   physically stopped, `goto` returns early. In that case, switch to Newport's
-   handshake approach.
-4. **Echo, and replies to set commands.** The code tolerates both, but if
-   neither happens the drain step can be simplified.
-5. **CS130 has at most 2 gratings.** The "3" button just raises an error
-   there. Fine, but worth knowing.
-
-## Next steps
-
-### 1. Test at a monochromator (ideally one CS130 and one CS260)
-
-```
-pip install -r requirements.txt
-```
-
-Switch the driver (one time per PC; needs admin rights):
-
-1. Plug in and power the monochromator.
-2. Run Zadig (https://zadig.akeo.ie).
-3. Options → List All Devices.
-4. Pick the Cornerstone (USB ID `1180 0012`).
-5. Pick **WinUSB** as the target driver, then click **Replace Driver**.
-
-Then run the probe from the repo root:
-
-```
-python helpers/cornerstone_probe.py --move --grating 2
-```
-
-It writes `cornerstone_probe_<time>.txt` to the current folder. `--move` steps
-the wavelength +10 nm and back and opens/closes the shutter; `--grating 2`
-switches to grating 2 and back. Without those flags it only reads.
-
-Read the log against the "Not yet verified" list above and fix
-`hardware/cornerstone.py` where needed. Then run a real automation
-(e.g. `automations/tcspc/spectral.py`) and check that the console prints
-`Cornerstone: direct USB (WinUSB)`.
-
-### 2. Roll out to users
-
-Each PC needs the `pip install` and the Zadig swap once. Nothing else changes
-for them. If clicking through Zadig is a problem, `wdi-simple.exe` from the
-same project (libwdi) can do the swap from a one-line `.bat`.
-
-### 3. Clean up, once every PC is on WinUSB
-
-Delete:
-
-- `helpers/cornerstone_helper.exe`
-- `helpers/Cornerstone.dll`
-- `helpers/CyUSB.dll`
-- `helpers/cornerstoneHelperFiles/`
-
-Then remove `CornerstoneClient` and the fallback branch in
-`Cornerstone._connect`.
+- **IN `0x81` is a buffer, not a stream.** Every read instantly returns the
+  whole 64-byte reply buffer again. Its first line is the latest reply; the
+  rest is leftovers from older replies, e.g.
+  `b'C\r\n.976\r\n\numents,Model Cornerstone 130,...'`.
+- **Taking a command blanks the buffer.** Its first 8 bytes become `\x00`.
+  A query's reply replaces that 60–150 ms later, sometimes after a
+  zero-length packet or a read timeout. A set command leaves it blank.
+  `CornerstoneClient.query` waits for blank → reply, so it never returns the
+  previous answer.
+- **One command at a time.** A write made while the unit is busy blocks
+  until it's free, so a query sent right after `GOWAVE`/`GRAT` is answered
+  once the move has finished. That's how the driver waits for moves: one
+  query, no polling.
+- **Never two commands in flight.** Polling `GRAT?` every 0.5 s during a
+  grating change left the CS130 answering every query with the reply to
+  the one two before it, until power-cycled. `open()` checks `INFO?` to
+  catch this.
+- **`HANDSHAKE 1`** (what Newport's DLL uses around moves) adds a status
+  line to every command, `0` ok or `32` error, which overwrites a query's
+  value ~4 ms after it appears. The driver keeps handshake off.
 
 ## Caveats
 
-- **On a PC switched to WinUSB, Newport's own software can't see the
-  monochromator.** To undo: Device Manager → the device → Update driver →
-  pick the Cypress/Newport driver, or roll back.
-- **The `set_grating_zero/offset/factor/lines` methods overwrite the unit's
-  stored calibration.** Only use them when recalibrating, and write down the
-  old values first; the probe log has them.
-- **`goto` / `position` use whatever `UNITS?` reports.** All of LTB2 assumes
-  nm, same as before.
+- **Newport's software can't see a monochromator on WinUSB.** Undo: Device
+  Manager → the device → Update driver → pick the Cypress/Newport driver,
+  or Roll Back Driver.
+- **Grating changes may lose the wavelength** (they do on the CS130).
+  `cs.set_grating` moves back; scripts calling
+  `cs.client.set_grating` directly must `goto` themselves.
+- **Don't drive the monochromator from two programs at once.**
+- **`set_grating_zero/offset/factor/lines` overwrite the unit's stored
+  calibration.** Only for recalibrating; the probe log records the current
+  values first.
+- **`goto` / `position` use whatever `UNITS?` reports.** LTB2 assumes nm.
 
 ## Re-deriving the protocol
 
-`Cornerstone.dll` and `CyUSB.dll` are .NET assemblies, not native code, so
-they can be read back almost to source. There are two ways:
-
-- **ILSpy** (free) on Windows.
-- **Python, on any OS** (what was used here): `pip install dnfile dncil`, then
-  walk `pe.net.mdtables.TypeDef` → `MethodList` and disassemble each method
-  body with `dncil.cil.body.CilMethodBody`. String literals come from
-  `pe.net.user_strings`. The VID/PID are the `ldc.i4` constants stored to
-  `vendorId` / `productId` in the constructor.
-
-Side note: both DLLs are flagged AnyCPU (not 32-bit-only). The 32-bit Python
-inside the helper exe was never strictly required.
+The DLLs are no longer in the working tree; get them from commit `19edcd1`
+(`git show 19edcd1:helpers/Cornerstone.dll > Cornerstone.dll`).
+`Cornerstone.dll` and `CyUSB.dll` are .NET assemblies and decompile almost
+to source: use ILSpy on Windows, or in Python `pip install dnfile dncil`,
+walk `pe.net.mdtables.TypeDef` → `MethodList` and disassemble each body
+with `dncil.cil.body.CilMethodBody` (strings are in `pe.net.user_strings`;
+VID/PID are the `ldc.i4` constants stored to `vendorId` / `productId`).
+Both DLLs are AnyCPU, so the helper's 32-bit Python was never needed.
 
 ## Linux / macOS (future)
 
-The same `CornerstoneUSB` code works with no driver swap. Install libusb
-(`brew install libusb` / `apt install libusb-1.0-0`). On Linux, also add a udev
+`CornerstoneClient` works without a driver swap. Install libusb
+(`brew install libusb` / `apt install libusb-1.0-0`). On Linux add a udev
 rule so non-root users can open the device:
 
 ```
 SUBSYSTEM=="usb", ATTRS{idVendor}=="1180", ATTRS{idProduct}=="0012", MODE="0666"
 ```
 
-If the device shows up as Cypress `04b4:8613` instead of `1180:0012`, it is
-waiting for firmware from the Newport driver, and `fxload` would be needed.
-That's unlikely, but check it first.
+If the device appears as Cypress `04b4:8613` instead of `1180:0012`, it's
+waiting for firmware from the Newport driver and needs `fxload`.
