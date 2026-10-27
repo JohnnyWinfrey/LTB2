@@ -58,7 +58,7 @@ class Extinction():
                 break
 
             wavelength = self.cornerstone.startWavelength + j * step_size
-            self.cornerstone.mono.goto(wavelength)
+            self.cornerstone.goto(wavelength)
             time.sleep(1)
 
             if adjust_gain:
@@ -113,7 +113,6 @@ class Extinction():
 
             self.xwing._x = x
             self.xwing._y = y
-            self.cornerstone.currentWavelength = wavelength
 
             if self.plotter is not None:
                 self.plotter.append(wavelength, dataPoint)
@@ -135,7 +134,7 @@ class Extinction():
         if len(self.xwing.samples) == 0:
             print("No regions")
 
-        self.cornerstone.mono.open_shutter()
+        self.cornerstone.open_shutter()
         all_data = []
         self.gain_map = {}
 
@@ -155,7 +154,7 @@ class Extinction():
             writer.writerows(all_data)
         print(f"\nSaved extinction data - {len(all_data)} measurements")
 
-        self.cornerstone.mono.close_shutter()
+        self.cornerstone.close_shutter()
         print(f"Scan complete! Data saved to: {csv_filename}")
         return all_data
 

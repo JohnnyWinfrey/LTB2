@@ -45,7 +45,7 @@ class SingleFluor():
                 break
 
             wavelength = self.cornerstone.startWavelength + j * step_size
-            self.cornerstone.mono.goto(wavelength)
+            self.cornerstone.goto(wavelength)
             time.sleep(2)
 
             dataPoint = (self.digi.measure() + self.digi.measure()
@@ -57,7 +57,6 @@ class SingleFluor():
                 'voltage': dataPoint, 'gain': self.gain,
             })
 
-            self.cornerstone.currentWavelength = wavelength
             if self.plotter is not None:
                 self.plotter.append(wavelength, dataPoint)
 
@@ -80,7 +79,7 @@ class SingleFluor():
             print("FYI: No regions")
             return
 
-        self.cornerstone.mono.open_shutter()
+        self.cornerstone.open_shutter()
         all_data = []
 
         if self.xwing.reference:
@@ -100,7 +99,7 @@ class SingleFluor():
             writer.writerows(all_data)
         print(f"\nSaved fluor data - {len(all_data)} measurements")
 
-        self.cornerstone.mono.close_shutter()
+        self.cornerstone.close_shutter()
         print(f"Scan complete! Data saved to: {csv_filename}")
         return all_data
 

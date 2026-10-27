@@ -59,7 +59,7 @@ def apply_theme(app):
 
 # Method names treated as "read a value" rather than "do an action".
 _READOUT_PREFIXES = ("get",)
-_READOUT_NAMES = {"measure", "read"}
+_READOUT_NAMES = {"measure", "read", "position", "grating", "filter", "shutter_open"}
 
 
 class _Worker(QThread):

@@ -40,8 +40,12 @@ def backend():
     return libusb_package.get_libusb1_backend()
 
 
-def read_all(dev, window_s, packet_timeout_ms=100):
-    """Every IN packet that arrives within window_s, with arrival times."""
+def read_all(dev, window_s, packet_timeout_ms=100, until_reply=False):
+    """Every IN packet that arrives within window_s, with arrival times.
+
+    The Cornerstone's IN pipe never goes quiet: it re-sends its 64-byte reply
+    buffer on every read. So poll gently and keep only packets that differ
+    from the one before, with how many identical copies followed."""
     import usb.core
 
     got, t0 = [], time.monotonic()
@@ -50,29 +54,42 @@ def read_all(dev, window_s, packet_timeout_ms=100):
             data = bytes(dev.read(EP_IN, 64, packet_timeout_ms))
         except usb.core.USBTimeoutError:
             continue
-        got.append((time.monotonic() - t0, data))
+        if got and got[-1][1] == data:
+            got[-1][2] += 1
+        else:
+            got.append([time.monotonic() - t0, data, 1])
+            if until_reply and len(got) > 1 and first_text(got):
+                break
+        time.sleep(0.002)
     return got
 
 
-def exchange(dev, cmd, terminator=b"\r\n", window_s=1.5):
-    """Send cmd, log every packet that comes back within window_s."""
-    read_all(dev, 0.2)    # drain
+def exchange(dev, cmd, terminator=b"\r\n", window_s=1.5, until_reply=False):
+    """Send cmd, log every distinct packet that comes back within window_s
+    (or, with until_reply, until the reply shows up)."""
+    read_all(dev, 0.05)    # drain
     payload = cmd.encode("ascii") + terminator
     t0 = time.monotonic()
-    n = dev.write(EP_OUT, payload, 1000)
-    got = read_all(dev, window_s)
+    # The write blocks while the unit is busy with a move
+    n = dev.write(EP_OUT, payload, int(max(1.0, window_s) * 1000))
+    got = read_all(dev, window_s, until_reply=until_reply)
     log(f">> {payload!r}  (wrote {n} bytes)")
     if not got:
         log("   <no reply>")
-    for t, data in got:
-        log(f"   +{t * 1000:7.1f} ms  {len(data):2d} B  {data!r}")
+    for t, data, count in got:
+        log(f"   +{t * 1000:7.1f} ms  {len(data):2d} B  x{count:<5d} {data!r}")
     return got, t0
 
 
 def first_text(got):
-    text = b"".join(d for _, d in got).replace(b"\x00", b"").decode("ascii", "replace")
-    lines = [l.strip() for l in text.splitlines() if l.strip()]
-    return lines
+    """The reply in the last packet: its first line, if the buffer holds one
+    (a leading NUL means the unit hasn't answered yet)."""
+    if not got:
+        return []
+    data = got[-1][1]
+    if not data or data[0] == 0 or b"\r\n" not in data:
+        return []
+    return [data.split(b"\r\n")[0].decode("ascii", "replace").strip()]
 
 
 def main():
@@ -161,18 +178,14 @@ def main():
                 log("\nCould not read a start wavelength; skipping move test.")
             else:
                 target = start + 10.0
-                log(f"\n== GOWAVE {target:.3f} (from {start:.3f}): raw reply ==")
-                exchange(dev, f"GOWAVE {target:.3f}", window_s=1.0)
-
-                log("\n== Polling WAVE? during the move ==")
-                t0, last = time.monotonic(), None
-                while time.monotonic() - t0 < 30:
-                    got, _ = exchange(dev, "WAVE?", window_s=0.3)
-                    lines = first_text(got)
-                    if lines and lines[-1] == last and abs(float(last) - target) < 0.05:
-                        break
-                    last = lines[-1] if lines else last
-                log(f"move settled after ~{time.monotonic() - t0:.1f} s")
+                # One query per move, never polled: the unit answers it once
+                # the move is done, and queries piled up mid-move put its
+                # replies out of step until a power cycle.
+                log(f"\n== GOWAVE {target:.3f} (from {start:.3f}), then one WAVE? ==")
+                t0 = time.monotonic()
+                exchange(dev, f"GOWAVE {target:.3f}", window_s=0.2)
+                exchange(dev, "WAVE?", window_s=30, until_reply=True)
+                log(f"move done after ~{time.monotonic() - t0:.1f} s")
 
                 log(f"\n== GOWAVE with HANDSHAKE 1 (Newport's way), back to {start:.3f} ==")
                 exchange(dev, "HANDSHAKE 1")
@@ -190,19 +203,21 @@ def main():
         if args.grating:
             lines = first_text(exchange(dev, "GRAT?")[0])
             start = lines[-1].split(",")[0] if lines else None
-            if start is None:
-                log("\nCould not read the current grating; skipping grating test.")
+            wave = first_text(exchange(dev, "WAVE?")[0])
+            if start is None or not wave:
+                log("\nCould not read the current grating / wavelength; skipping grating test.")
             else:
                 for g in (args.grating, start):
-                    log(f"\n== GRAT {g}: raw reply, then polling GRAT? / WAVE? ==")
-                    exchange(dev, f"GRAT {g}", window_s=1.0)
+                    log(f"\n== GRAT {g}, then one GRAT? and WAVE? ==")
                     t0 = time.monotonic()
-                    while time.monotonic() - t0 < 60:
-                        lines = first_text(exchange(dev, "GRAT?", window_s=0.5)[0])
-                        if lines and lines[-1].split(",")[0].strip() == str(g):
-                            break
+                    exchange(dev, f"GRAT {g}", window_s=0.2)
+                    exchange(dev, "GRAT?", window_s=60, until_reply=True)
                     log(f"grating {g} reported after ~{time.monotonic() - t0:.1f} s")
                     exchange(dev, "WAVE?")
+                # The unit doesn't keep the wavelength across a grating change
+                log(f"\n== Back to {wave[0]} ==")
+                exchange(dev, f"GOWAVE {wave[0]}", window_s=0.2)
+                exchange(dev, "WAVE?", window_s=30, until_reply=True)
     finally:
         usb.util.release_interface(dev, 0)
         usb.util.dispose_resources(dev)

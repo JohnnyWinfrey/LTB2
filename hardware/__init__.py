@@ -18,7 +18,7 @@ from .medusa import Medusa, FakeMedusa
 from .xwing import XWing, FakeXWing
 from .smc100 import SMC100, FakeSMC100
 from .spectre_core import SpectreCore, FakeSpectreCore
-from .cornerstone import Cornerstone, FakeCornerstone
+from .cornerstone import Cornerstone, FakeCornerstone, CornerstoneClient, Unsupported
 from .pmt_shield import PMTShield, FakePMTShield
 from .digitizer import Digitizer, FakeDigitizer
 from .th260 import TH260, FakeTH260
