@@ -65,7 +65,7 @@ class SLIMDRMCalibration():
         return all_data
 
 
-TITLE = "DRM Calibration"
+TITLE = "Mueller Single"
 
 
 def main(sim=False):

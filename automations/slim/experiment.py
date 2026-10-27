@@ -6,7 +6,7 @@ Each builder returns the fake when sim is true.
 from hardware import (Medusa, FakeMedusa, SpectreCore, FakeSpectreCore,
                       PowerMeter, FakePowerMeter)
 
-MEDUSA_PORT = "/dev/cu.usbmodem1301"
+MEDUSA_PORT = "COM11"
 
 
 def medusa(sim=False):

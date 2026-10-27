@@ -35,12 +35,12 @@ from PySide6.QtWidgets import (
 #   "dark", "light", "ltb2"        -- neutral / the old SLIM look
 #   "synthwave", "matrix", "dracula", "nord", "gruvbox", "bubblegum", "hotdog",
 #   "redalert"
-THEME = "nord"
+THEME = "gruvbox"
 
 # Optional wallpaper drawn (stretched) behind the panels: a file in themes/
 # (png / jpg / gif). NOTE: GIFs show their FIRST FRAME only -- Qt stylesheets
 # don't animate. Set to None for no background.
-BACKGROUND = "rat.jpg"
+BACKGROUND = ""
 
 
 def apply_theme(app):

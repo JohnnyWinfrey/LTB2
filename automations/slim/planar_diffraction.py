@@ -30,8 +30,6 @@ class SLIMEdgeLP():
                                             psaPol=analyzeStep, psaWave=analyzeStep,
                                             xwing=T2)
                     print(f"T2={T2}")
-                    time.sleep(1)
-
                     wavelengths, intensities = self.spectro.takeSpectrum()
                     if self.plotter is not None:
                         self.plotter.setData(wavelengths, intensities)
