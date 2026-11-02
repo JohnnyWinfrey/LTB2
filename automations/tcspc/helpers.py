@@ -17,13 +17,17 @@ from automations import DATA_DIR
 
 
 def saveTCSPCHDF5(all_data, scanType="tcspcSpectral", name="sample", region="A",
-                  resolution_ps=0.0, tacq_ms=0, channel=0):
+                  resolution_ps=0.0, tacq_ms=0, channel=0, coordinate="wavelength",
+                  extra_attrs=None):
     """
-    Save a TCSPC wavelength sweep to HDF5.
+    Save a TCSPC sweep to HDF5.
 
-    all_data : list of per-wavelength dicts as built by TCSPC_Spectral, each
-               holding 'wavelength', 'counts' (channels x bins), 'sync_rate'
-               and 'count_rate'.
+    all_data : list of per-point dicts as built by a scan, each holding
+               `coordinate` (the swept value -- "wavelength" in nm for
+               spectral.py, "position" in DAC codes for stage.py), 'counts'
+               (channels x bins), 'sync_rate' and 'count_rate'.
+    extra_attrs : optional {name: value} of extra file attributes, e.g. the
+               scan axis for a stage sweep.
 
     Layout mirrors slim_helpers.saveHDF5: data/<name>_<timestamp>/ with the
     metadata as file attributes. `counts` is the selected channel; every
@@ -36,7 +40,7 @@ def saveTCSPCHDF5(all_data, scanType="tcspcSpectral", name="sample", region="A",
     os.makedirs(output_dir, exist_ok=True)
     h5_path = os.path.join(output_dir, f"{name}_Region{region}_{scanType}.h5")
 
-    wavelengths = np.array([d["wavelength"] for d in all_data], dtype=np.float64)
+    coords = np.array([d[coordinate] for d in all_data], dtype=np.float64)
     counts_all = np.array([d["counts"] for d in all_data], dtype=np.uint32)  # (N, CH, bins)
     nBins = counts_all.shape[2]
     time_ns = np.arange(nBins) * (resolution_ps / 1000.0)
@@ -49,8 +53,10 @@ def saveTCSPCHDF5(all_data, scanType="tcspcSpectral", name="sample", region="A",
         f.attrs["bin_width_ps"] = resolution_ps
         f.attrs["tacq_ms"] = tacq_ms
         f.attrs["channel"] = channel
+        for key, value in (extra_attrs or {}).items():
+            f.attrs[key] = value
 
-        f.create_dataset("wavelength", data=wavelengths)
+        f.create_dataset(coordinate, data=coords)
         f.create_dataset("time_ns", data=time_ns)
         f.create_dataset("sync_rate", data=np.array([d["sync_rate"] for d in all_data]))
         f.create_dataset(
