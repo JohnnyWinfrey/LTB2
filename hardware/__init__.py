@@ -23,5 +23,5 @@ from .pmt_shield import PMTShield, FakePMTShield
 from .digitizer import Digitizer, FakeDigitizer
 from .th260 import TH260, FakeTH260
 from .sr510 import SR510, FakeSR510
-from .piezo_stage import PiezoStage, FakePiezoStage, StageClient
+from .kpz101 import PiezoStage, FakePiezoStage, StageClient
 from .kdc101 import KDC101Stage, FakeKDC101Stage, KDC101Client

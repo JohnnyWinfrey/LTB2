@@ -19,9 +19,12 @@ are motor steps. The motor setup applied on connect (STEPS_PER_REV,
 GBOX_RATIO, PITCH) is the one from Thorlabs' official KDC101 example
 (KDC101 + PRM1-Z8) -- use setMotorParams if yours differs.
 
-The DCServo.dll comes from the Kinesis installation (e.g.
-C:\\Program Files (x86)\\Thorlabs\\Kinesis or C:\\Program Files\\Thorlabs\\Kinesis)
-and must be dropped into helpers/ next to the other Kinesis DLLs.
+The DLL is searched in the standard Kinesis install folders first (C:\\Program
+Files (x86) or C:\\Program Files, then the Thorlabs\\Kinesis subfolder) because
+its companion DLLs (the DeviceManager family) must sit next to it; a copy in
+helpers/ is the fallback. Either way only the DLLs are needed, not the
+Kinesis app. The Kinesis set in helpers/ must be from one release: mixing,
+e.g., a new DCServo.dll with an old DeviceManager.dll fails to load.
 """
 import os
 import time
@@ -44,23 +47,51 @@ class KDC101Client:
     DEFAULT_SERIAL = "27600928"   # the lab KDC101 (getDevices lists all of them)
     DEVICE_TYPE = 27      # KDC101 serials start with 27 (KPZ101s are 295)
     POLL_MS = 200
-    # Motor setup per Thorlabs' official KDC101 example (KDC101 + PRM1-Z8).
-    STEPS_PER_REV = 1919.64186
-    GBOX_RATIO = 1.0
-    PITCH = 1.0           # mm per rev
+    # The KDC101 is a controller; the scale depends on the stage it drives.
+    # steps/mm = STEPS_PER_REV * GBOX_RATIO / PITCH (per the DCServo header).
+    # The lab stage (Kinesis reference) moves 18.0 motor revs per mm, i.e.
+    # 34553.55 steps/mm -- 18x the stock example params (measured: 0.1461 mm
+    # real vs 2.6302 mm reported). If you know the true gearbox/screw values
+    # (Kinesis -> Motor Parameters), set them here or via setMotorParams.
+    STEPS_PER_REV = 1919.64186   # PRM1-Z8 motor (per Thorlabs' example)
+    GBOX_RATIO = 18.0            # 18 motor revs per output rev
+    PITCH = 1.0                  # mm per output rev
 
     # CC_GetDeviceUnitFromRealValue unit types
     UNIT_DISTANCE = 0
     UNIT_VELOCITY = 1
     UNIT_ACCEL = 2
 
+    # The DC servo DLL's companions (the DeviceManager family) must be found
+    # next to it, so the Kinesis install folder is preferred over helpers/.
+    KINESIS_DIRS = (
+        r"C:\Program Files (x86)\Thorlabs\Kinesis",
+        r"C:\Program Files\Thorlabs\Kinesis",
+    )
+
+    def _find_dll(self, dll_dir=None):
+        dirs = []
+        if dll_dir:
+            dirs.append(os.path.abspath(dll_dir))
+        dirs.extend(self.KINESIS_DIRS)
+        dirs.append(self.DLL_DIR)
+        for d in dirs:
+            path = os.path.join(d, self.DLL_NAME)
+            if os.path.exists(path):
+                return path
+        raise FileNotFoundError(
+            f"{self.DLL_NAME} not found in helpers/ or the Kinesis install "
+            "folders -- install Kinesis or copy the DLL (and its companions) "
+            "into helpers/")
+
     def __init__(self, dll_dir=None):
         import ctypes as ct
         self._ct = ct
-        dll_dir = os.path.abspath(dll_dir or self.DLL_DIR)
-        # The DC servo DLL loads DeviceManager.dll from its own folder.
-        self._dll_dir_handle = os.add_dll_directory(dll_dir)
-        self.lib = ct.CDLL(os.path.join(dll_dir, self.DLL_NAME))
+        dll_path = self._find_dll(dll_dir)
+        # The DC servo DLL loads its companion DLLs from its own folder.
+        if hasattr(os, "add_dll_directory"):
+            self._dll_dir_handle = os.add_dll_directory(os.path.dirname(dll_path))
+        self.lib = ct.CDLL(dll_path)
         for fn in ("CC_Open", "CC_Close", "CC_StopPolling", "CC_EnableChannel",
                    "CC_DisableChannel", "CC_CheckConnection", "CC_Home",
                    "CC_ClearMessageQueue", "CC_MoveAbsolute",
@@ -294,10 +325,16 @@ class KDC101Stage:
         self.client.open(self.serial)
         self._connected = True
         lo, hi = self.client.travel_mm()
-        self.startMm, self.endMm = 0.0, hi
+        self.startMm = 0.0
+        self.endMm = hi if hi > lo else 100.0
+        limits = (f"travel {lo:.1f}..{hi:.1f} mm" if hi > lo
+                  else "travel limits unset (0..0) -- moves are not clamped, "
+                       "set the scan range in this window")
+        scale = self.client.STEPS_PER_REV * self.client.GBOX_RATIO / self.client.PITCH
         state = "homed" if not self.client.needs_homing() \
             else "NOT homed -- press home"
-        print(f"KDC101 {self.serial} online, travel {lo:.1f}..{hi:.1f} mm, {state}")
+        print(f"KDC101 {self.serial} online, scale {scale:.0f} steps/mm, "
+              f"{limits}, {state}")
 
     def getDevices(self):
         """The KDC101 serial numbers Kinesis sees."""
@@ -342,7 +379,7 @@ class KDC101Stage:
         self._checkHomed()
         mm = float(mm)
         lo, hi = self.client.travel_mm()
-        if not lo <= mm <= hi:
+        if hi > lo and not lo <= mm <= hi:
             raise ValueError(f"position {mm} mm out of range {lo:.1f}..{hi:.1f}")
         return self.client.move_absolute_mm(mm)
 
@@ -391,6 +428,8 @@ class KDC101Stage:
         if not self._connected:
             return v
         lo, hi = self.client.travel_mm()
+        if hi <= lo:
+            return v
         return min(max(v, lo), hi)
 
 
