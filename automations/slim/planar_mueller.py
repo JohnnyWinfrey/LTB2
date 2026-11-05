@@ -26,9 +26,7 @@ class SLIMPlanarMueller():
 
         # Stage line scan: 41 points, 0-20 mm in 0.5 mm steps (same travel as
         # SLIM_planarDiffraction).
-        self.numPoints  = 41
-        self.stepSize   = 0.5
-        self.stageWait  = 4         # s to let the Z stage settle after a move
+        self.points = np.linspace(-6, 6, 25)
         self.numAngles  = 61        # PSG waveplate steps over a full rotation
 
         print("SLIM AUTOMATION READY")
@@ -51,7 +49,7 @@ class SLIMPlanarMueller():
 
             self.medusa.setPosition(psgPol=0, psgWave=psg_angle,
                                     psaPol=0, psaWave=psa_angle)
-            time.sleep(self.settleWait)
+            time.sleep(0.1)
 
             wavelengths, intensities = self.spectro.takeSpectrum()
             if self.plotter is not None:
@@ -68,18 +66,17 @@ class SLIMPlanarMueller():
         points = []
         self.avgStepTime = []
         try:
-            for p in range(self.numPoints):
+            for p in range(len(self.points)):
                 if getattr(self, "_stop", False):
                     break
                 t0 = time.time()
 
                 # Translate, parking both waveplates at the sweep's start angle
                 # in the same move, then let the stage settle.
-                T2 = float(p * self.stepSize)
-                print(f"Point {p + 1}/{self.numPoints}: T2={T2}")
+                T2 = float(self.points[p])
+                print(f"T2={T2}")
                 self.medusa.setPosition(psgPol=0, psgWave=0,
                                         psaPol=0, psaWave=0, xwing=T2)
-                time.sleep(self.stageWait)
 
                 all_data = self._dualRotatingWaveplate()
                 # Only keep complete sweeps: a run stopped part-way through one
@@ -95,7 +92,7 @@ class SLIMPlanarMueller():
                 # Progress bar stuff
                 t1 = time.time()
                 self.avgStepTime.append(t1 - t0)
-                self.progress(p, self.numPoints, np.average(self.avgStepTime))
+                self.progress(p, len(self.points), np.average(self.avgStepTime))
 
         finally:
             self.medusa.resetHome()
