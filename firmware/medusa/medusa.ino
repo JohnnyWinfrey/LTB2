@@ -15,6 +15,11 @@
 //   STOP                                   decelerate every axis to a halt
 //   ?                                      "Idle|Run GP=.. GW=.. X=.. AW=.. AP=.."
 //
+// Rotary axes (GP GW AW AP) are physical circles: a command of 1800 is
+// wrapped to the equivalent angle closest to where the axis currently is
+// (MOVE/JOG/HOME), so 1800 means "spin in place" and a stage at 350 commanded
+// to 10 spins 20 degrees forward, not 1390 back. The xwing (X) never wraps.
+//
 // Axes (units: deg for rotary, mm for the xwing):
 //   GP  PSG polarizer   PUL 2,  DIR 3
 //   GW  PSG waveplate   PUL 4,  DIR 5
@@ -39,16 +44,17 @@ struct Axis {
   float speed;        // units/s
   float accel;        // units/s^2
   bool invertDir;     // flip if the stage turns the wrong way
+  bool rotary;        // true: stage is a circle, commands wrap to shortest path
 };
 
 Axis axes[NUM_AXES] = {
-  { "GP", AccelStepper(AccelStepper::DRIVER, 2, 3),   STEPS_PER_DEG,      30,  60,  false },
-  { "GW", AccelStepper(AccelStepper::DRIVER, 4, 5),   STEPS_PER_DEG,      30,  60,  false },
-  // xwing kept slow: 0.2 mm/s is ~1260 steps/s, and the Mega tops out near
+  { "GP", AccelStepper(AccelStepper::DRIVER, 2, 3),   STEPS_PER_DEG,      60,  120, false, true },
+  { "GW", AccelStepper(AccelStepper::DRIVER, 4, 5),   STEPS_PER_DEG,      60,  120, false, true },
+  // xwing: 0.5 mm/s is ~3150 steps/s, and the Mega tops out near
   // 4000 steps/s summed over every axis moving at once.
-  { "X",  AccelStepper(AccelStepper::DRIVER, 6, 7),   XWING_STEPS_PER_MM, 0.2, 0.5, false },
-  { "AW", AccelStepper(AccelStepper::DRIVER, 8, 9),   STEPS_PER_DEG,      30,  60,  false },
-  { "AP", AccelStepper(AccelStepper::DRIVER, 10, 11), STEPS_PER_DEG,      30,  60,  false },
+  { "X",  AccelStepper(AccelStepper::DRIVER, 6, 7),   XWING_STEPS_PER_MM, 0.5, 1.0, false, false },
+  { "AW", AccelStepper(AccelStepper::DRIVER, 8, 9),   STEPS_PER_DEG,      60,  120, false, true },
+  { "AP", AccelStepper(AccelStepper::DRIVER, 10, 11), STEPS_PER_DEG,      60,  120, false, true },
 };
 
 char line[LINE_MAX];
@@ -79,6 +85,17 @@ void applyMotion(Axis &a) {
   a.stepper.setAcceleration(a.accel * a.stepsPerUnit);
 }
 
+// Rotary stages are circles: given a commanded target, return the equivalent
+// angle (differing by whole turns) closest to ref, so the axis always takes
+// the short way around. No-op for linear axes.
+long nearestEquivalent(Axis &a, long ref, long target) {
+  if (!a.rotary) return target;
+  long full = (long)lround(a.stepsPerUnit * 360.0);   // steps per full turn
+  long d = ((target - ref) % full + full) % full;
+  if (d > full / 2) d -= full;
+  return ref + d;
+}
+
 bool anyRunning() {
   for (int i = 0; i < NUM_AXES; i++)
     if (axes[i].stepper.isRunning()) return true;
@@ -106,7 +123,11 @@ void cmdMove() {
     targets[n++] = a;
   }
   if (n == 0) return error("MOVE needs <axis> <pos>");
-  for (int i = 0; i < n; i++) targets[i]->stepper.moveTo(toSteps(*targets[i], values[i]));
+  for (int i = 0; i < n; i++) {
+    long steps = toSteps(*targets[i], values[i]);
+    steps = nearestEquivalent(*targets[i], targets[i]->stepper.currentPosition(), steps);
+    targets[i]->stepper.moveTo(steps);
+  }
   Serial.println(F("ok"));
 }
 
@@ -115,7 +136,8 @@ void cmdJog() {
   float delta;
   if (!a) return error("unknown axis");
   if (!parseNumber(strtok(NULL, " "), delta)) return error("bad number");
-  a->stepper.moveTo(a->stepper.targetPosition() + toSteps(*a, delta));
+  long t = a->stepper.targetPosition() + toSteps(*a, delta);
+  a->stepper.moveTo(nearestEquivalent(*a, a->stepper.targetPosition(), t));
   Serial.println(F("ok"));
 }
 
@@ -124,9 +146,10 @@ void cmdHome() {
   if (name) {
     Axis *a = findAxis(name);
     if (!a) return error("unknown axis");
-    a->stepper.moveTo(0);
+    a->stepper.moveTo(nearestEquivalent(*a, a->stepper.currentPosition(), 0));
   } else {
-    for (int i = 0; i < NUM_AXES; i++) axes[i].stepper.moveTo(0);
+    for (int i = 0; i < NUM_AXES; i++)
+      axes[i].stepper.moveTo(nearestEquivalent(axes[i], axes[i].stepper.currentPosition(), 0));
   }
   Serial.println(F("ok"));
 }

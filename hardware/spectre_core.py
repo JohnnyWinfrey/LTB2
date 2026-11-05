@@ -126,7 +126,10 @@ class SpectreCore(_SpectrometerLiveView):
         wavelengths = self.spec.wavelengths()
         intensities = 0
         for _ in range(self.scansToAvg):
-            print(f"Working on spectrum {_+1}")
+            if self.scansToAvg==1:
+                pass
+            else:
+                print(f"Working on spectrum {_+1}")
             time.sleep(self.intTime/1000000)
             intensities = intensities + (self.spec.intensities(correct_dark_counts=True)
                                          - self.background)
