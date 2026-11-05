@@ -242,6 +242,7 @@ class TH260:
         self.lastCounts = None
         self.lastCountRate = 0
         self.lastSyncRate = 0
+        self.sleeptime = 0
 
     def _connect(self, settings, dll_path, bin_width_ps):
         self.th = TH260DLLClient(settings, dll_path, bin_width_ps)
@@ -290,6 +291,10 @@ class TH260:
 
     def getCountRate(self):
         return f"{self.lastCountRate} /s"
+
+    def waitTime(self, seconds=0):
+        self.sleeptime = int(float(seconds))
+        print(f"Wait time set to {self.sleeptime} seconds")
 
 
 class _FakeTH260Client:
