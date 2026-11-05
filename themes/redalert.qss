@@ -1,0 +1,122 @@
+/* Red Alert: EVERYTHING IS RED AND NOTHING IS FINE. See-through windows,
+   screaming crimson text, buttons that look like they launch something. */
+QWidget {
+    background: transparent;
+    color: #ff0000;
+    font-family: "Impact", "Haettenschweiler", "Arial Black", sans-serif;
+    font-size: 20px;
+    font-weight: 900;
+    font-style: italic;
+    text-decoration: underline;
+}
+QLabel {
+    color: #ff1a1a;
+    font-size: 22px;
+}
+QGroupBox {
+    border: 6px double #ff0000;
+    border-radius: 24px;
+    margin-top: 26px;
+    padding: 14px;
+}
+QGroupBox::title {
+    subcontrol-origin: margin;
+    left: 20px;
+    padding: 2px 12px;
+    color: #ffffff;
+    background: qlineargradient(x1:0, y1:0, x2:1, y2:0,
+        stop:0 #8b0000, stop:0.5 #ff0000, stop:1 #8b0000);
+    border: 3px solid #ff0000;
+    border-radius: 10px;
+    font-size: 26px;
+}
+QPushButton {
+    background: qradialgradient(cx:0.5, cy:0.3, radius:0.9, fx:0.5, fy:0.2,
+        stop:0 #ffb3b3, stop:0.25 #ff2020, stop:0.7 #b30000, stop:1 #4d0000);
+    color: #2b0000;
+    border: 3px outset #ff0000;
+    border-radius: 8px;
+    padding: 6px 10px;
+    font-size: 14px;
+    /* a wallpaper of tiny red rats. Path is relative to the working directory,
+       which is the repo root when launched from LetThereBeBeans. */
+    background-image: url(themes/rat_tile.png);
+    background-repeat: repeat-xy;
+}
+QPushButton:hover {
+    background: qradialgradient(cx:0.5, cy:0.5, radius:1.0, fx:0.5, fy:0.5,
+        stop:0 #ffffff, stop:0.15 #ff4d4d, stop:0.5 #ff0000, stop:1 #660000);
+    color: #ffffff;
+    border: 3px ridge #ff5555;
+    font-size: 22px;       /* hovering makes the button LUNGE at you, */
+    padding: 14px 24px;    /* shoving the whole layout around */
+}
+QPushButton:pressed {
+    background: qradialgradient(cx:0.5, cy:0.7, radius:0.9, fx:0.5, fy:0.8,
+        stop:0 #ff0000, stop:0.6 #800000, stop:1 #1a0000);
+    color: #ff0000;
+    border: 3px inset #990000;
+    padding: 8px 8px 4px 12px;   /* the button visibly squishes */
+}
+QPushButton:disabled {
+    background: qlineargradient(x1:0, y1:0, x2:1, y2:1,
+        stop:0 #4d0000, stop:0.5 #800000, stop:1 #4d0000);
+    color: #ff6666;
+    border: 3px dashed #990000;
+}
+QLineEdit {
+    background: rgba(255, 0, 0, 50);
+    color: #ff0000;
+    border: 4px solid #ff0000;
+    border-radius: 14px;
+    padding: 6px 10px;
+    selection-background-color: #ff0000;
+    selection-color: #ffffff;
+}
+QLineEdit:focus {
+    border: 5px dashed #ff0000;
+    background: rgba(255, 0, 0, 90);
+}
+QCheckBox { spacing: 12px; }
+QCheckBox::indicator {
+    width: 28px;
+    height: 28px;
+    border: 4px solid #ff0000;
+    border-radius: 14px;
+    background: rgba(255, 0, 0, 40);
+}
+QCheckBox::indicator:checked {
+    background: qradialgradient(cx:0.5, cy:0.5, radius:0.6, fx:0.5, fy:0.5,
+        stop:0 #ffffff, stop:0.4 #ff0000, stop:1 #660000);
+}
+QProgressBar {
+    border: 5px ridge #ff0000;
+    border-radius: 16px;
+    background: rgba(255, 0, 0, 30);
+    color: #ffffff;
+    text-align: center;
+    min-height: 32px;
+}
+QProgressBar::chunk {
+    border-radius: 10px;
+    background: qlineargradient(x1:0, y1:0, x2:1, y2:0,
+        stop:0 #4d0000, stop:0.2 #ff0000, stop:0.4 #800000,
+        stop:0.6 #ff0000, stop:0.8 #800000, stop:1 #ff0000);
+}
+QScrollArea { border: none; }
+QScrollBar:vertical, QScrollBar:horizontal {
+    background: transparent;
+    border: 3px solid #ff0000;
+    border-radius: 8px;
+}
+QScrollBar::handle {
+    background: #ff0000;
+    border-radius: 5px;
+    min-height: 30px;
+    min-width: 30px;
+}
+QToolTip {
+    background: #ff0000;
+    color: #ffffff;
+    border: 4px double #ffffff;
+}

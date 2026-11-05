@@ -9,7 +9,9 @@ pandas
 matplotlib
 
 # Real hardware only (sim = 0); not needed to run scripts with the fakes
-pyserial      # Arduino serial (DeathStar / XWing / PMT) + Newport SMC100
+pyserial      # Arduino serial (DeathStar / XWing / PMT) + Newport SMC100 + SR510 lock-in
 niscope       # NI digitizer (Digitizer.measure)
 seabreeze     # spectrometer (SpectreCore)
 pyvisa        # Thorlabs power meter (PowerMeter)
+pyusb         # Cornerstone monochromator, direct USB (WinUSB driver via Zadig)
+libusb-package  # libusb-1.0.dll for pyusb on Windows

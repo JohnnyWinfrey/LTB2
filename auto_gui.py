@@ -16,6 +16,7 @@ Minimal usage::
 import inspect
 import sys
 import traceback
+import typing
 from pathlib import Path
 
 from PySide6.QtCore import QThread, Signal, Qt, QObject
@@ -32,7 +33,8 @@ from PySide6.QtWidgets import (
 # file. Set THEME = None for the plain native look. Add your own by dropping a
 # new .qss file in themes/. Bundled:
 #   "dark", "light", "ltb2"        -- neutral / the old SLIM look
-#   "synthwave", "matrix", "dracula", "nord", "gruvbox", "bubblegum", "hotdog"
+#   "synthwave", "matrix", "dracula", "nord", "gruvbox", "bubblegum", "hotdog",
+#   "redalert"
 THEME = "gruvbox"
 
 # Optional wallpaper drawn (stretched) behind the panels: a file in themes/
@@ -41,7 +43,7 @@ THEME = "gruvbox"
 BACKGROUND = ""
 
 
-def _apply_theme(app):
+def apply_theme(app):
     """Apply themes/<THEME>.qss to the whole app (no-op if THEME is None)."""
     if not THEME:
         return
@@ -57,7 +59,7 @@ def _apply_theme(app):
 
 # Method names treated as "read a value" rather than "do an action".
 _READOUT_PREFIXES = ("get",)
-_READOUT_NAMES = {"measure", "read"}
+_READOUT_NAMES = {"measure", "read", "position", "grating", "filter", "shutter_open"}
 
 
 class _Worker(QThread):
@@ -124,6 +126,9 @@ def build_hardware_window(device):
         if not params:
             outer.addWidget(_action_or_readout_row(name, method))
             added = True
+        elif len(params) == 1 and _choices(params[0]):
+            outer.addWidget(_choice_row(name, method, _choices(params[0])))
+            added = True
         else:
             outer.addWidget(_setter_group(name, method, params))
             added = True
@@ -174,6 +179,35 @@ def _action_or_readout_row(name, method):
 
     btn.clicked.connect(do_action)
     return btn
+
+
+def _choices(param):
+    """The options of a Literal[...] annotation, else None."""
+    if typing.get_origin(param.annotation) is typing.Literal:
+        return typing.get_args(param.annotation)
+    return None
+
+
+def _choice_row(name, method, choices):
+    """One-arg method typed Literal[...]: label + one button per choice,
+    e.g. jog(direction: Literal["-", "+"]) -> "jog  [-] [+]"."""
+    row = QWidget()
+    lay = QHBoxLayout(row)
+    lay.setContentsMargins(0, 0, 0, 0)
+    lay.addWidget(QLabel(name), 1)
+
+    for choice in choices:
+        btn = QPushButton(str(choice))
+
+        def do_call(_checked=False, choice=choice):
+            try:
+                method(choice)
+            except Exception as exc:
+                print(f"[auto_gui] {name}({choice!r}) raised: {exc}")
+
+        btn.clicked.connect(do_call)
+        lay.addWidget(btn)
+    return row
 
 
 def _setter_group(name, method, params):
@@ -425,7 +459,7 @@ def run_gui(automation=None, run=None, hardware=(), title="Automation"):
     title      : control-window title.
     """
     app = QApplication.instance() or QApplication(sys.argv)
-    _apply_theme(app)
+    apply_theme(app)
 
     # One parent window holds every panel side by side, so closing it closes
     # everything. (A LivePlot, if attached, stays its own pyqtgraph window.)
